@@ -9,7 +9,6 @@ import { expect, test, type Page } from '@playwright/test'
 const locales = [
   { tag: 'zh-CN', settingsTitle: '设置' },
   { tag: 'en-US', settingsTitle: 'Settings' },
-  { tag: 'ja-JP', settingsTitle: '設定' },
 ] as const
 
 async function seedAuth(page: Page): Promise<void> {

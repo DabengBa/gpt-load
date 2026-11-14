@@ -358,7 +358,7 @@ func TestDeleteGroupEndpointAuthenticationValidationNotFoundConflictAndSuccess(t
 	notFoundRequest.Header.Set("Authorization", "Bearer test-auth-key")
 	notFoundRequest.Header.Set("Accept-Language", "ja-JP")
 	engine.ServeHTTP(notFound, notFoundRequest)
-	assertDeleteGroupEnvelope(t, notFound, http.StatusNotFound, "NOT_FOUND", "グループが存在しません")
+	assertDeleteGroupEnvelope(t, notFound, http.StatusNotFound, "NOT_FOUND", "分组不存在")
 
 	for _, test := range []struct {
 		language string
@@ -366,7 +366,7 @@ func TestDeleteGroupEndpointAuthenticationValidationNotFoundConflictAndSuccess(t
 	}{
 		{language: "zh-CN", message: "分组仍被访问密钥引用"},
 		{language: "en-US", message: "The group is still referenced by access keys"},
-		{language: "ja-JP", message: "グループはアクセスキーから参照されています"},
+		{language: "ja-JP", message: "分组仍被访问密钥引用"},
 	} {
 		row := models.AccessKey{
 			Name:      "HTTP reference " + test.language,

@@ -7,7 +7,7 @@ import { parse } from '@formatjs/icu-messageformat-parser'
 // HTML-looking syntax that ICU rejects, so every message must parse cleanly
 // and every locale must expose the same keys with the same placeholders.
 const WEB_ROOT = fileURLToPath(new URL('..', import.meta.url))
-const locales = ['zh-CN', 'en-US', 'ja-JP']
+const locales = ['zh-CN', 'en-US']
 const namespaces = [
   'core',
   'import',
@@ -87,17 +87,6 @@ try {
   }
 
   // 2. Key parity against en-US (the fallback catalog).
-  // ja-JP predates full monitor coverage: these keys are absent today and the
-  // UI falls back to en-US. Keep the allowlist so only new drift fails.
-  const knownMissing = new Set([
-    'ja-JP/monitor:monitor.logs.copySuccess',
-    'ja-JP/monitor:monitor.logs.copyFailure',
-    'ja-JP/monitor:monitor.logs.resultSummary',
-    'ja-JP/monitor:monitor.logs.columns.timeNewestFirst',
-    'ja-JP/monitor:monitor.logs.columns.tokensDetail',
-    'ja-JP/monitor:monitor.logs.response.httpStatus',
-  ])
-  const seenMissing = new Set()
   for (const locale of locales.filter((item) => item !== 'en-US')) {
     for (const namespace of namespaces) {
       const expected = new Set(catalogs['en-US'][namespace].map(([path]) => path))
@@ -105,20 +94,13 @@ try {
       for (const key of expected) {
         const id = `${locale}/${namespace}:${key}`
         if (!actual.has(key)) {
-          if (knownMissing.has(id)) {
-            seenMissing.add(id)
-          } else {
-            failures.push(`missing-key ${id}`)
-          }
+          failures.push(`missing-key ${id}`)
         }
       }
       for (const key of actual) {
         if (!expected.has(key)) failures.push(`extra-key ${locale}/${namespace}:${key}`)
       }
     }
-  }
-  for (const id of knownMissing) {
-    if (!seenMissing.has(id)) failures.push(`stale-allowlist ${id} (key now exists or moved)`)
   }
 
   // 3. Placeholder parity: every shared key must interpolate the same names.

@@ -1,4 +1,4 @@
-export const supportedLocales = ['zh-CN', 'en-US', 'ja-JP'] as const
+export const supportedLocales = ['zh-CN', 'en-US'] as const
 export type AppLocale = (typeof supportedLocales)[number]
 
 // Storage key shared by both frontends' locale controllers and the classic
@@ -17,7 +17,6 @@ export function getBrowserLocale(): AppLocale {
     const family = language.toLowerCase().split('-')[0]
     if (family === 'zh') return 'zh-CN'
     if (family === 'en') return 'en-US'
-    if (family === 'ja') return 'ja-JP'
   }
   return 'en-US'
 }

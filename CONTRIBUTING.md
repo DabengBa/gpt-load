@@ -53,13 +53,13 @@ make check   # 完整验收门禁 / the full acceptance gate
 2. 修复缺陷或改变行为时，优先补一个能复现问题的测试。
 3. 提交前跑一次 `make check`；无法运行时在 PR 里说明原因和未验证范围。
 4. 按 `.github/pull_request_template.md` 填写，如实勾选自查清单。
-5. 改动涉及用户可见能力时，**三份 README（`README.md`、`README_CN.md`、`README_JP.md`）必须同步更新**。
+5. 改动涉及用户可见能力时，**两份 README（`README.md`、`README_CN.md`）必须同步更新**。
 
 1. Branch from `main`, keep the change focused, and avoid unrelated refactors or reformatting.
 2. For bug fixes and behavior changes, add a test that reproduces the problem first.
 3. Run `make check` before submitting; if you cannot, say why and what remains unverified.
 4. Fill in `.github/pull_request_template.md` honestly, including the checklist.
-5. When a change affects user-visible capabilities, **all three READMEs (`README.md`, `README_CN.md`, `README_JP.md`) must be updated together**.
+5. When a change affects user-visible capabilities, **both READMEs (`README.md`, `README_CN.md`) must be updated together**.
 
 ## Commit 规范 / Commit convention
 

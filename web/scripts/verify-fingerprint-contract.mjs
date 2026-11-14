@@ -182,7 +182,7 @@ try {
   assert.match(requestLogs, /'modeltrace',\n\] as const/)
   const logFilters = await read('../src/shared/domain/monitor/log-filters.ts')
   assert.match(logFilters, /requestLogOperations = requestLogOperationValues/)
-  for (const locale of ['zh-CN', 'en-US', 'ja-JP']) {
+  for (const locale of ['zh-CN', 'en-US']) {
     assert.ok(
       (await read(`../src/shared/i18n/locales/${locale}/monitor.ts`)).includes('modeltrace: '),
     )

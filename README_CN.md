@@ -8,7 +8,7 @@
 
 把 API Key、流量调度、故障处理、请求日志与用量统计，收进同一个入口。
 
-[English](README.md) · 中文 · [日本語](README_JP.md) | [官方网站](https://www.gpt-load.com)
+[English](README.md) · 中文 | [官方网站](https://www.gpt-load.com)
 
 > 本仓库是 **[DabengBa/gpt-load](https://github.com/DabengBa/gpt-load)**。下文保留的 `tbphp/gpt-load` 链接仅指向上游官方发布物或容器产物，不代表本仓库归属。
 
@@ -65,6 +65,9 @@
 
 > [!WARNING]
 > **破坏性变更：上一版本写出的数据库必须转换或替换。** 内置 Codex、Claude、Antigravity、Grok 订阅及嵌入式 CPA 已删除，包括 OAuth、订阅凭据文件导入、刷新和账号/额度观察。本构建无法原地打开含已退役订阅结构或 migration `0003` 的旧库，会直接拒绝启动。受支持的路径有两条：停机后用 `gpt-load convert-legacy-db --source <legacy.db> --target <new.db>` 离线转换（保留分组、API 凭据、访问密钥与限额用量，丢弃请求日志与用量历史），或使用全新数据库手工重建。详见 [旧库离线转换](.docs/tech/legacy-db-conversion.md)。没有原地 migration、自动删除或兼容层；请保留旧部署和备份，不要让此构建连接业务数据库。启动拒绝不保证 SQLite 文件/WAL 零副作用。标准 API 与 external CLIProxyAPI 网关渠道仍受支持。
+
+> [!NOTE]
+> 日语界面和日文 README 已移除。升级后，已保存的日语界面偏好会回退到浏览器语言列表中首个支持的语言（中文或英文）；没有匹配时使用英文。服务端文案语言协商独立进行，未选出支持的语言时默认中文。
 
 ### 1. 启动服务
 

@@ -367,8 +367,8 @@ func TestAuthenticateMessagesAreLocalized(t *testing.T) {
 		},
 		{
 			language:     "ja-JP",
-			unauthorized: "無効な認証キー",
-			locked:       "認証試行回数が多すぎます。しばらくしてから再試行してください",
+			unauthorized: "无效的授权密钥",
+			locked:       "认证尝试过多，请稍后重试",
 		},
 	} {
 		t.Run(test.language, func(t *testing.T) {

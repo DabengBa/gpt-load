@@ -633,7 +633,6 @@ test('schedule statistics heading and all header titles are vertically centered'
   const translations = {
     'zh-CN': ['分组 24h', '请求 / 成功率'],
     'en-US': ['Group 24h', 'Calls / Success rate'],
-    'ja-JP': ['グループ 24h', 'リクエスト / 成功率'],
   } as const
   for (const locale of Object.keys(translations) as (keyof typeof translations)[]) {
     await page.evaluate((value) => localStorage.setItem('gpt-load.locale', value), locale)
@@ -974,7 +973,6 @@ for (const width of [1440, 390]) {
 for (const [locale, label] of [
   ['en-US', 'Priority'],
   ['zh-CN', '优先级'],
-  ['ja-JP', '優先度'],
 ]) {
   test(`priority group heading is localized in ${locale}`, async ({ page }) => {
     await installScheduleRoutes(page)

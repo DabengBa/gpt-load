@@ -381,7 +381,6 @@ test('mobile metrics retain group identity and expose ratio sync failure', async
 for (const [locale, status] of [
   ['en-US', 'Sync successful'],
   ['zh-CN', '同步成功'],
-  ['ja-JP', '同期成功'],
 ]) {
   test(`site status and date use ${locale}; modified links keep browser behavior`, async ({
     page,

@@ -1,5 +1,5 @@
 import { InternationalizationProvider } from '@astryxdesign/core/i18n'
-import astryxJaJP from '@astryxdesign/core/locales/ja-JP.json'
+
 import astryxZhCN from '@astryxdesign/core/locales/zh-CN.json'
 import { useCallback, useSyncExternalStore, type ReactNode } from 'react'
 import { IntlProvider, useIntl, type IntlConfig, type PrimitiveType } from 'react-intl'
@@ -142,7 +142,6 @@ export async function createAppI18n(): Promise<AppI18n> {
 
 const astryxCatalogs = {
   'zh-CN': astryxZhCN,
-  'ja-JP': astryxJaJP,
 }
 
 export function AppI18nProviders({ i18n, children }: { i18n: AppI18n; children: ReactNode }) {

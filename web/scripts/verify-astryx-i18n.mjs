@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 const webRoot = fileURLToPath(new URL('..', import.meta.url))
 const coreLocales = (locale) => `${webRoot}node_modules/@astryxdesign/core/locales/${locale}.json`
 
-const astryxLocales = ['en', 'zh-CN', 'ja-JP']
+const astryxLocales = ['en', 'zh-CN']
 
 const catalogs = {}
 for (const locale of astryxLocales) {
@@ -48,7 +48,7 @@ for (const locale of astryxLocales) {
 // The provider wiring must pass a catalog for every AppLocale except en-US
 // (whose strings ship inside the components themselves).
 const i18nSource = await readFile(`${webRoot}src/frontends/astryx/app/i18n.tsx`, 'utf8')
-for (const tag of ['zh-CN', 'ja-JP']) {
+for (const tag of ['zh-CN']) {
   if (!i18nSource.includes(`'${tag}'`)) {
     failures += 1
     console.error(`FAIL: app/i18n.tsx does not wire an astryx catalog for "${tag}"`)

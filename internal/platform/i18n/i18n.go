@@ -29,7 +29,7 @@ func Init() error {
 	bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
 
 	// 加载支持的语言文件
-	languages := []string{"zh-CN", "en-US", "ja-JP"}
+	languages := []string{"zh-CN", "en-US"}
 	for _, lang := range languages {
 		if err := loadMessageFile(lang); err != nil {
 			return fmt.Errorf("failed to load language file %s: %w", lang, err)
@@ -115,8 +115,6 @@ func parseAcceptLanguage(acceptLang string) []string {
 			supported = defaultLanguage
 		case "en":
 			supported = "en-US"
-		case "ja":
-			supported = "ja-JP"
 		default:
 			continue
 		}
@@ -153,8 +151,6 @@ func getMessages(lang string) map[string]string {
 	switch lang {
 	case "en-US":
 		return locales.MessagesEnUS
-	case "ja-JP":
-		return locales.MessagesJaJP
 	default:
 		return locales.MessagesZhCN
 	}

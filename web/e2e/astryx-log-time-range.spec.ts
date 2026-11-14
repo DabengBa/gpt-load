@@ -34,7 +34,7 @@ async function openLogs(page: Page, locale?: string) {
 }
 
 const detailButtons = (page: Page) =>
-  page.getByRole('button', { name: /^(View details|查看详情|詳細を表示)$/u })
+  page.getByRole('button', { name: /^(View details|查看详情)$/u })
 
 test('preset applies to the request, reset restores the default window (en-US)', async ({
   page,
@@ -72,7 +72,6 @@ test('preset applies to the request, reset restores the default window (en-US)',
     .click()
   expect(logRequests.length).toBe(requestCount)
   await expect(page.getByText('Filter draft has not been applied')).toBeVisible()
-
 
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
 
@@ -141,12 +140,16 @@ test('zh-CN renders localized filter strings; a preset applies the range', async
   await expect(detailButtons(page)).toHaveCount(2)
 })
 
-test('ja-JP renders localized preset filter strings', async ({ page }) => {
+test('obsolete ja-JP preference falls back to English preset filter strings', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'languages', { value: ['ja-JP'], configurable: true })
+    Object.defineProperty(navigator, 'language', { value: 'ja-JP', configurable: true })
+  })
   await openLogs(page, 'ja-JP')
 
-  await expect(page.getByRole('group', { name: 'クイック時間範囲' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Quick time ranges' })).toBeVisible()
   await expect(
-    page.getByRole('group', { name: 'クイック時間範囲' }).getByRole('button', { name: '7d' }),
+    page.getByRole('group', { name: 'Quick time ranges' }).getByRole('button', { name: '7d' }),
   ).toBeVisible()
 })
 

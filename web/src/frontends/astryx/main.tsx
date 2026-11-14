@@ -83,7 +83,6 @@ function showStartupFailure(host: HTMLElement): void {
   const labels = {
     'zh-CN': { message: '无法加载界面，请重试。', retry: '重新加载' },
     'en-US': { message: 'Unable to load the interface. Please retry.', retry: 'Reload' },
-    'ja-JP': { message: '画面を読み込めません。再試行してください。', retry: '再読み込み' },
   }[getBrowserLocale()]
   const message = document.createElement('p')
   message.setAttribute('role', 'alert')

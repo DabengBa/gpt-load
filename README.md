@@ -8,7 +8,7 @@
 
 API keys, traffic scheduling, failure handling, request logs, and usage accounting — behind a single entry point.
 
-English · [中文](README_CN.md) · [日本語](README_JP.md) | [Official Website](https://www.gpt-load.com)
+English · [中文](README_CN.md) | [Official Website](https://www.gpt-load.com)
 
 > This checkout is the **[DabengBa/gpt-load](https://github.com/DabengBa/gpt-load)** repository. Any `tbphp/gpt-load` links retained below refer to upstream official release or container artifacts, not this repository.
 
@@ -65,6 +65,9 @@ Your application only needs one base URL and one AccessKey. Providers, accounts,
 
 > [!WARNING]
 > **Breaking change: a database written by the previous release must be converted or replaced.** Built-in Codex, Claude, Antigravity and Grok subscriptions and the embedded CPA adapter have been removed, including OAuth, credential-file import, refresh and account/quota observation. This build cannot open a legacy schema containing retired subscription structures or migration `0003` in place; it refuses to start instead. Two paths are supported: convert the stopped legacy database offline with `gpt-load convert-legacy-db --source <legacy.db> --target <new.db>` (keeps groups, API credentials, access keys and quota state, drops request logs and usage history), or start with a fresh database and reconfigure by hand. See [legacy database conversion](.docs/tech/legacy-db-conversion.md). There is no in-place migration, automatic deletion, or compatibility layer. Preserve the old deployment and backups; do not point this build at a business database. Startup rejection does not promise zero SQLite file/WAL side effects. Ordinary APIs and the external CLIProxyAPI gateway channel remain supported.
+
+> [!NOTE]
+> The Japanese interface and Japanese README have been removed. After upgrading, a saved Japanese interface preference falls back to the first supported browser language (Chinese or English), or English if none matches. Server-side message negotiation is separate and defaults to Chinese when no supported language is selected.
 
 ### 1. Start the service
 

@@ -166,7 +166,7 @@ func TestNetworkConfigurationKeepsExampleSimpleAndDocumentsBindOverride(t *testi
 		}
 	}
 
-	readmes := []string{"README.md", "README_CN.md", "README_JP.md"}
+	readmes := []string{"README.md", "README_CN.md"}
 	for _, readme := range readmes {
 		if !strings.Contains(readRepositoryFile(t, readme), "BIND_ADDRESS") {
 			t.Fatalf("%s does not document advanced Compose override BIND_ADDRESS", readme)

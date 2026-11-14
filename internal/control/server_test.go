@@ -669,7 +669,7 @@ func TestControlJSONBodyLimitLocalizes413(t *testing.T) {
 	}{
 		{language: "zh-CN", message: "请求体过大"},
 		{language: "en-US", message: "Request body is too large"},
-		{language: "ja-JP", message: "リクエストボディが大きすぎます"},
+		{language: "ja-JP", message: "请求体过大"},
 	} {
 		t.Run(test.language, func(t *testing.T) {
 			const prefix = `{"name":"localized-limit","upstream_url":"https://localized-limit.example.com/v1",` +
@@ -1391,7 +1391,7 @@ func TestUpdateGroupSettingsEndpointAllowsURLReuseAndPreservesI18nAndAuth(t *tes
 	if err := json.Unmarshal(recorder.Body.Bytes(), &success); err != nil {
 		t.Fatal(err)
 	}
-	if success.Code != 0 || success.Message != "成功" || success.Data.Enabled ||
+	if success.Code != 0 || success.Message != "操作成功" || success.Data.Enabled ||
 		string(success.Data.Params) != `{"base_url":"https://unique.example.com/v1"}` {
 		t.Fatalf("success envelope = %#v", success)
 	}
@@ -1639,7 +1639,7 @@ func TestUpdateGroupModelsEndpointIDsAuthNotFoundAndSuccessDTO(t *testing.T) {
 	if err := json.Unmarshal(success.Body.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if envelope.Code != 0 || envelope.Message != "成功" {
+	if envelope.Code != 0 || envelope.Message != "操作成功" {
 		t.Fatalf("success envelope = %#v", envelope)
 	}
 	var fields map[string]json.RawMessage
@@ -2173,7 +2173,7 @@ func TestServerGroupModelDiscoveryBodyContract(t *testing.T) {
 		}{
 			{language: "en-US", message: "No active credential is available for this group"},
 			{language: "zh-CN", message: "该分组没有可用凭据"},
-			{language: "ja-JP", message: "このグループには利用可能な認証情報がありません"},
+			{language: "ja-JP", message: "该分组没有可用凭据"},
 		} {
 			recorder := serveGroupDiscoveryRequest(
 				t, engine, authKey, test.language, groupID, nil,

@@ -2,7 +2,7 @@
 // `import type` + `typeof` keeps this fully erased — no catalog bytes enter
 // any bundle through this module. en-US is the source of truth because the
 // runtime overlays locale catalogs on top of en-US, so a key missing from
-// zh-CN/ja-JP still resolves.
+// zh-CN still resolves.
 import type enAccessKeys from './locales/en-US/access-keys'
 import type enCore from './locales/en-US/core'
 import type enGroup from './locales/en-US/group'

@@ -2,13 +2,13 @@ import { expect, test, type Page } from '@playwright/test'
 
 test.setTimeout(90_000)
 
-async function seedSession(page: Page) {
-  await page.addInitScript(() => {
+async function seedSession(page: Page, initialLocale = 'zh-CN') {
+  await page.addInitScript((locale) => {
     localStorage.setItem('gpt-load.auth-key', 'e2e-auth-key')
     if (!localStorage.getItem('gpt-load.locale')) {
-      localStorage.setItem('gpt-load.locale', 'zh-CN')
+      localStorage.setItem('gpt-load.locale', locale)
     }
-  })
+  }, initialLocale)
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname
     const data =
@@ -61,7 +61,7 @@ async function seedSession(page: Page) {
 
 test('rapid locale changes during navigation publish complete catalogs', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 900 })
-  await seedSession(page)
+  await seedSession(page, 'en-US')
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   let releaseCore = () => {}
@@ -72,23 +72,23 @@ test('rapid locale changes during navigation publish complete catalogs', async (
   const monitorGate = new Promise<void>((resolve) => {
     releaseMonitor = resolve
   })
-  await page.route('**/shared/i18n/locales/ja-JP/core.ts*', async (route) => {
+  await page.route('**/shared/i18n/locales/zh-CN/core.ts*', async (route) => {
     await coreGate
     await route.continue()
   })
   try {
     await page.goto('/settings')
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('设置')
-    await page.getByRole('button', { name: '菜单与偏好设置' }).click()
-    await page.getByRole('radio', { name: 'EN', exact: true }).locator('..').click()
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings')
+    await page.getByRole('button', { name: 'Menu and preferences' }).click()
     await expect(page.locator('html')).toHaveAttribute('lang', 'en-US')
     await expect(page.getByRole('radio', { name: 'EN', exact: true })).toBeChecked()
+    await expect(page.getByRole('radio', { name: '日本語', exact: true })).toHaveCount(0)
     await page.route('**/shared/i18n/locales/en-US/monitor.ts*', async (route) => {
       await monitorGate
       await route.continue()
     })
-    const coreRequested = page.waitForRequest('**/shared/i18n/locales/ja-JP/core.ts*')
-    await page.getByRole('radio', { name: '日本語', exact: true }).locator('..').click()
+    const coreRequested = page.waitForRequest('**/shared/i18n/locales/zh-CN/core.ts*')
+    await page.getByRole('radio', { name: '中文', exact: true }).locator('..').click()
     await coreRequested
     const monitorRequested = page.waitForRequest('**/shared/i18n/locales/en-US/monitor.ts*')
     await page.getByRole('dialog').getByRole('link', { name: 'Monitor', exact: true }).click()
@@ -98,11 +98,11 @@ test('rapid locale changes during navigation publish complete catalogs', async (
     await expect(page).toHaveURL(/\/monitor(?:\?|$)/)
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Monitor')
     releaseCore()
-    await expect(page.locator('html')).toHaveAttribute('lang', 'ja-JP')
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('モニター')
+    await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('监控')
     await expect(page.getByRole('dialog')).not.toBeVisible()
     expect(errors).toEqual([])
-    expect(await page.evaluate(() => localStorage.getItem('gpt-load.locale'))).toBe('ja-JP')
+    expect(await page.evaluate(() => localStorage.getItem('gpt-load.locale'))).toBe('zh-CN')
   } finally {
     releaseCore()
     releaseMonitor()
