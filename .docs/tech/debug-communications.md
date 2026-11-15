@@ -59,7 +59,7 @@ Feature-specific capture storage and adapters are Unix-only. Windows retains the
 
 A session starts at the Gateway data-plane boundary for `/v1` and `/v1beta` namespaces, before authentication and early route termination. It records the client request that is actually observed, final client response writes, material write/read/close/flush/hijack outcomes, logical retry attempts, and preparation failures.
 
-Bifrost-backed HTTP provider adapters pass a real per-request observer through the supported execution context. Their observed upstream request and response headers, bodies, termination events, and callback errors are recorded in the corresponding logical attempt. When debug capture is enabled, model-probe and credential-test operations under `/api` use the same observer and store path; each dispatched probe has a session keyed by its `request_id` and a logical attempt containing provider, channel, model, route, sequence, and retry/fallback metadata. Probe capture remains disabled when the explicit opt-in is off.
+Bifrost-backed HTTP provider adapters pass a real per-request observer through the supported execution context. Their observed upstream request and response headers, bodies, termination events, and callback errors are recorded in the corresponding logical attempt. When debug capture is enabled, model-probe, credential-test, and ModelTrace operations under `/api` use the same observer and store path; each dispatched probe or ModelTrace challenge has a session keyed by its `request_id` and a logical attempt containing provider, channel, model, route, sequence, and retry/fallback metadata. Probe capture remains disabled when the explicit opt-in is off.
 
 The feature records only data that the Gateway or a supported Bifrost HTTP observer actually observes. It does not claim to capture TLS or socket wire bytes, HTTP transfer framing already removed by the transport, HTTP trailers not exposed through the observer contract, or data that was never observed before cancellation, timeout, process failure, or connection close.
 
@@ -105,6 +105,19 @@ The evidence boundary remains the bytes and events actually observed. A
 returned a complete response; inspect parts and termination metadata together.
 Regression evidence lives in `internal/control/probe_capture_test.go`,
 `internal/container/debug_capture_test.go`.
+
+Each dispatched ModelTrace challenge has its own capture, correlated through the
+challenge's log ID and structured request log. No capture is created for a
+challenge that fails before dispatch. ModelTrace uses the same callback drain;
+if no response completion callback arrives after draining, its capture is failed
+with `no_observation_source`. The detail distinguishes a source that never
+started from one that started and ended without completion. This is an internal
+missing-evidence diagnostic, not an observed provider transport termination;
+previously observed partial parts remain available. This stricter diagnostic is
+specific to ModelTrace and does not change other probe completion semantics.
+Capture failures do not change challenge results or request logging. The real
+adapter/store and ZIP linkage is covered by
+`internal/container/modeltrace_capture_test.go`.
 
 ## Empty-completion triage order
 

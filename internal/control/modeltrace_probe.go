@@ -372,9 +372,12 @@ func (s *Service) executeModelTraceChallenge(
 	if err := spec.Validate(); err != nil {
 		return modelTraceChallengeRequest{}, app_errors.ErrInternalServer
 	}
+	probe := &credentialProbeExecutor{channels: s.channelRegistry, captureFactory: s.probeCaptures}
+	executionContext, finishCapture := probe.startCapture(ctx, spec)
 	startedAt := s.now()
-	attempt := s.executor.Execute(ctx, spec)
+	attempt := s.executor.Execute(executionContext, spec)
 	completedAt := s.now().UTC()
+	finishCapture(attempt)
 	return modelTraceChallengeRequest{
 		requestID: requestID, attempt: attempt, sequence: spec.Sequence,
 		completedAt: completedAt, duration: max(completedAt.Sub(startedAt), 0),

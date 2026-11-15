@@ -100,6 +100,17 @@ func (probe *credentialProbeExecutor) startCapture(parent context.Context, spec 
 			_ = session.Fail(err)
 			return
 		}
+		if spec.Operation == execution.OperationModelTrace && !observer.completed {
+			detail := "provider observation source never started; no completion callback was possible"
+			if observer.sourceStarted {
+				detail = "provider observation source started and ended without a completion callback"
+			}
+			err := errors.New(detail)
+			err = errors.Join(err, attempt.RecordResponseTermination("no_observation_source", detail))
+			_ = attempt.Fail(err)
+			_ = session.Fail(err)
+			return
+		}
 		if err := attempt.Complete(); err != nil {
 			_ = attempt.Fail(err)
 			_ = session.Fail(err)
@@ -112,15 +123,17 @@ func (probe *credentialProbeExecutor) startCapture(parent context.Context, spec 
 }
 
 type probeCaptureHTTPObserver struct {
-	mu           sync.Mutex
-	cond         *sync.Cond
-	attemptID    string
-	attempt      ProbeCaptureAttempt
-	sealed       bool
-	inFlight     int
-	observations int
-	writeErr     error
-	terminated   bool
+	mu            sync.Mutex
+	cond          *sync.Cond
+	attemptID     string
+	attempt       ProbeCaptureAttempt
+	sealed        bool
+	inFlight      int
+	observations  int
+	writeErr      error
+	terminated    bool
+	completed     bool
+	sourceStarted bool
 }
 
 func newProbeCaptureHTTPObserver(attemptID string, attempt ProbeCaptureAttempt) *probeCaptureHTTPObserver {
@@ -193,6 +206,7 @@ func (observer *probeCaptureHTTPObserver) ObserveResponseComplete(id string, tra
 	}
 	observer.mu.Lock()
 	terminated := observer.terminated
+	observer.completed = true
 	observer.mu.Unlock()
 	if !terminated && err != nil {
 		kind := "read_error"
@@ -222,6 +236,7 @@ func (observer *probeCaptureHTTPObserver) BeginHTTPObservation(id string) {
 	}
 	observer.mu.Lock()
 	if !observer.sealed && observer.attempt != nil && id == observer.attemptID {
+		observer.sourceStarted = true
 		observer.observations++
 	}
 	observer.mu.Unlock()
