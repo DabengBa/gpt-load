@@ -377,7 +377,7 @@ test('request timing tones by provider feedback status, not raw threshold', asyn
   await expect(page.getByRole('button', { name: 'View model mapping' })).toHaveCount(0)
 })
 
-test('group selector search narrows options and Apply commits group_id', async ({ page }) => {
+test('group selector search narrows options and immediately commits group_id', async ({ page }) => {
   const routes = await installRequestLogDisplayRoutes(page)
   await openLogs(page)
 
@@ -396,12 +396,11 @@ test('group selector search narrows options and Apply commits group_id', async (
   await expect(narrowed.first()).toHaveText('beta')
   await narrowed.first().click()
 
-  await applyButton(page).click()
   await expect(page).toHaveURL(/group_id=2/u)
   expect(latestLogRequest(routes).searchParams.get('group_id')).toBe('2')
 })
 
-test('client model selector searches the union of group models', async ({ page }) => {
+test('client model selector searches historical models', async ({ page }) => {
   const routes = await installRequestLogDisplayRoutes(page)
   await openLogs(page)
 
@@ -419,7 +418,6 @@ test('client model selector searches the union of group models', async ({ page }
   await expect(narrowed).toHaveCount(1)
   await narrowed.first().click()
 
-  await applyButton(page).click()
   await expect(page).toHaveURL(/client_model=worker/u)
   expect(latestLogRequest(routes).searchParams.get('client_model')).toBe('worker')
 })

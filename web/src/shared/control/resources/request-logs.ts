@@ -749,6 +749,53 @@ export function projectRequestLogPage(value: unknown): RequestLogPageDto {
 
 export { normalizeRequestLogFilters } from './request-log-filters'
 
+export interface RequestLogFacetsDto {
+  groups: { id: number; name?: string }[]
+  client_models: { value: string }[]
+}
+
+export function projectRequestLogFacets(value: unknown): RequestLogFacetsDto {
+  const record = projectRecord(value)
+  assertNoSecretLikeFields(record, ['groups', 'client_models'])
+  return {
+    groups: projectArray(record.groups, (item) => {
+      const group = projectRecord(item)
+      assertNoSecretLikeFields(group, ['id', 'name'])
+      return {
+        id: projectSafeInteger(group.id, { minimum: 1 }),
+        ...(group.name === undefined ? {} : { name: projectString(group.name) }),
+      }
+    }),
+    client_models: projectArray(record.client_models, (item) => {
+      const model = projectRecord(item)
+      assertNoSecretLikeFields(model, ['value'])
+      return { value: projectString(model.value) }
+    }),
+  }
+}
+
+export function requestLogFacetsQueryOptions(
+  client: ApiClient,
+  filters: RequestLogFilters,
+  enabled: boolean,
+) {
+  const normalized = normalizeRequestLogFilters(filters)
+  return {
+    queryKey: [...controlQueryKeys.logs.all, 'facets', normalized],
+    queryFn: async ({ signal }: QueryFunctionContext) => {
+      const params = new URLSearchParams()
+      for (const field of requestLogFilterFields) {
+        const value = normalized[field]
+        if (value !== undefined) params.append(field, String(value))
+      }
+      const query = params.toString()
+      const path: `/api/${string}` = query ? `/api/logs/facets?${query}` : '/api/logs/facets'
+      return projectRequestLogFacets(await client.request(path, { method: 'GET', signal }))
+    },
+    enabled,
+  }
+}
+
 export function requestLogQueryIdentity(filters: RequestLogFilters) {
   return controlQueryKeys.logs.list(normalizeRequestLogFilters(filters))
 }

@@ -31,6 +31,36 @@ type RequestLogReader interface {
 	Get(context.Context, string) (requestlog.Record, error)
 }
 
+type requestLogFacetReader interface {
+	Facets(context.Context, requestlog.ListQuery) (requestlog.FacetResult, error)
+}
+
+func (s *Server) handleRequestLogFacets(c *gin.Context) {
+	if _, scoped := currentAccessKeyID(c); scoped {
+		writeServiceError(c, "request_log_facets", app_errors.ErrForbidden)
+		return
+	}
+	query, apiErr := parseRequestLogQuery(c.Request.URL.RawQuery)
+	if apiErr != nil {
+		writeServiceError(c, "request_log_facets", apiErr)
+		return
+	}
+	reader, ok := s.service.requestLogs.(requestLogFacetReader)
+	if !ok {
+		writeServiceError(c, "request_log_facets", app_errors.ErrInternalServer)
+		return
+	}
+	result, err := reader.Facets(c.Request.Context(), query)
+	if err != nil {
+		if !requestWasCanceled(c.Request.Context(), err) {
+			err = app_errors.ParseDBError(err)
+		}
+		writeServiceError(c, "request_log_facets", err)
+		return
+	}
+	response.SuccessI18n(c, "common.success", result)
+}
+
 func (service *Service) ListRequestLogs(
 	ctx context.Context,
 	query requestlog.ListQuery,

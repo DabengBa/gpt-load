@@ -170,6 +170,14 @@ const groupOptions = [
   },
 ]
 
+const logFacets = {
+  groups: [
+    { id: 1, name: 'alpha' },
+    { id: 2, name: 'beta' },
+  ],
+  client_models: [{ value: 'gpt-4o' }, { value: 'gpt-5' }, { value: 'worker' }],
+}
+
 function envelope(data: unknown) {
   return { code: 0, message: 'OK', data }
 }
@@ -237,6 +245,10 @@ export async function installRequestLogDisplayRoutes(
       if (path === '/api/logs') {
         logRequests.push(url)
         await route.fulfill(response({ items: transformRows(rows), next_cursor: null }))
+        return
+      }
+      if (path === '/api/logs/facets') {
+        await route.fulfill(response(logFacets))
         return
       }
       if (path.startsWith('/api/logs/')) {
@@ -340,6 +352,10 @@ export async function installRequestLogTableRoutes(
         await route.fulfill(response({ items: rows.slice(0, limit), next_cursor: 'p2' }))
         return
       }
+      if (path === '/api/logs/facets') {
+        await route.fulfill(response(logFacets))
+        return
+      }
       if (path.startsWith('/api/logs/')) {
         const requestID = path.slice('/api/logs/'.length)
         await route.fulfill(response(requestLogDetail(requestID)))
@@ -414,6 +430,10 @@ export async function installRequestLogRangeRoutes(page: Page): Promise<RequestL
             ? rangeRows.filter((row) => row.completed_at_ms >= from && row.completed_at_ms <= to)
             : rangeRows
         await route.fulfill(response({ items, next_cursor: null }))
+        return
+      }
+      if (path === '/api/logs/facets') {
+        await route.fulfill(response(logFacets))
         return
       }
       if (path.startsWith('/api/logs/')) {

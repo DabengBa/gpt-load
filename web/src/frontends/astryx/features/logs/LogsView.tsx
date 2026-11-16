@@ -11,6 +11,7 @@ import { listChannels, type ChannelDto } from '@shared/control/resources/channel
 import { groupOptionsQueryOptions } from '@shared/control/resources/groups'
 import {
   requestLogQueryOptions,
+  requestLogFacetsQueryOptions,
   type RequestLogFilters,
   type RequestLogPageSize,
 } from '@shared/control/resources/request-logs'
@@ -274,14 +275,15 @@ export function LogsView() {
   const [paginationPending, setPaginationPending] = useState(false)
   const [pageTransitionOrigin, setPageTransitionOrigin] = useState<LogsMonitorState | null>(null)
   const [draft, setDraft] = useState<LogFilterDraft>(() => createLogFilterDraft(appliedFilters))
+  const [preserveDraftFor, setPreserveDraftFor] = useState<string | null>(null)
   const [filterErrors, setFilterErrors] = useState<LogFilterErrors>(() =>
     invalidAffinityKey !== undefined ? { affinity_key: 'monitor.logs.errors.affinityKey' } : {},
   )
   const detailFocusTimerRef = useRef<number | undefined>(undefined)
   const pendingDetailNavRef = useRef<Promise<unknown> | undefined>(undefined)
 
-  // Classic watch 1 (filterSignature, immediate): the applied filters own the
-  // draft. Carried as a render adjustment keyed on the serialized signature.
+  // Route changes normally replace the draft; an immediate facet change only
+  // synchronizes its own field and preserves unrelated edits.
   const filterSignature = JSON.stringify([
     serializeAppliedLogFilters(appliedFilters),
     invalidAffinityKey,
@@ -289,10 +291,13 @@ export function LogsView() {
   const [appliedSync, setAppliedSync] = useState(filterSignature)
   if (appliedSync !== filterSignature) {
     setAppliedSync(filterSignature)
-    setDraft(createLogFilterDraft(appliedFilters))
-    setFilterErrors(
-      invalidAffinityKey !== undefined ? { affinity_key: 'monitor.logs.errors.affinityKey' } : {},
-    )
+    if (preserveDraftFor !== filterSignature) {
+      setDraft(createLogFilterDraft(appliedFilters))
+      setFilterErrors(
+        invalidAffinityKey !== undefined ? { affinity_key: 'monitor.logs.errors.affinityKey' } : {},
+      )
+    }
+    setPreserveDraftFor(null)
     setPaginationPending(false)
     setPageTransitionOrigin(null)
   }
@@ -306,6 +311,13 @@ export function LogsView() {
   }
 
   const groupsQuery = useQuery(groupOptionsQueryOptions(apiClient, !isAccessKey))
+  const facetsQuery = useQuery(
+    requestLogFacetsQueryOptions(
+      apiClient,
+      appliedFilters,
+      !isAccessKey && invalidAffinityKey === undefined,
+    ),
+  )
   const channelsQuery = useQuery({
     queryKey: controlQueryKeys.channels.list(''),
     queryFn: ({ signal }) => listChannels(apiClient, '', signal),
@@ -508,6 +520,11 @@ export function LogsView() {
     setDraft((prev) => ({ ...prev, [field]: value }))
   }
 
+  async function refreshLogs(): Promise<void> {
+    if (invalidAffinityKey !== undefined) return
+    await Promise.all([logsQuery.refetch(), ...(!isAccessKey ? [facetsQuery.refetch()] : [])])
+  }
+
   async function commitFilters(filters: RequestLogFilters): Promise<void> {
     // The awaited detail navigation can have already committed a new URL —
     // classic reads the live route state after the await; re-parse the live
@@ -525,6 +542,7 @@ export function LogsView() {
     const scoped = isAccessKey ? scopeAccessKeyLogFilters(filters) : filters
     const serialized = serializeAppliedLogFilters(scoped)
     const nextSignature = JSON.stringify([serialized, undefined])
+    setPreserveDraftFor(null)
     setDraft(createLogFilterDraft(scoped))
     setFilterErrors({})
 
@@ -534,11 +552,25 @@ export function LogsView() {
       liveState.selectedRequestID === undefined &&
       !liveState.filtersOpen
     ) {
-      await logsQuery.refetch()
+      await refreshLogs()
       return
     }
 
     await navigateLogs(logsMonitorQuery(scoped))
+  }
+
+  function applyFacet(field: 'group_id' | 'client_model', value: string): void {
+    if (invalidAffinityKey !== undefined) return
+    const filters = { ...appliedFilters }
+    if (field === 'group_id') {
+      if (value) filters.group_id = Number(value)
+      else delete filters.group_id
+    } else if (value) filters.client_model = value
+    else delete filters.client_model
+    setDraft((previous) => ({ ...previous, [field]: value }))
+    const nextSignature = JSON.stringify([serializeAppliedLogFilters(filters), undefined])
+    setPreserveDraftFor(nextSignature === filterSignature ? null : nextSignature)
+    void navigateLogs(logsMonitorQuery(filters))
   }
 
   // In-place narrowing, not a jump: triage needs other requests on the same
@@ -652,7 +684,11 @@ export function LogsView() {
   }
 
   const optionsPartiallyFailed =
-    !isAccessKey && (groupsQuery.isError || channelsQuery.isError || accessKeyOptionsQuery.isError)
+    !isAccessKey &&
+    (groupsQuery.isError ||
+      facetsQuery.isError ||
+      channelsQuery.isError ||
+      accessKeyOptionsQuery.isError)
   const listBlocked = invalidAffinityKey !== undefined
   const skeletonRows = loading.rows
 
@@ -667,10 +703,10 @@ export function LogsView() {
           draft={draft}
           appliedDraft={createLogFilterDraft(appliedFilters)}
           errors={filterErrors}
-          groups={groupsQuery.data ?? []}
+          facets={facetsQuery.data}
           channels={channelsQuery.data?.items ?? []}
           accessKeys={accessKeyOptionsQuery.data ?? []}
-          groupsFailed={groupsQuery.isError}
+          facetsFailed={facetsQuery.isError}
           channelsFailed={channelsQuery.isError}
           accessKeysFailed={accessKeyOptionsQuery.isError}
           appliedChips={appliedChips}
@@ -679,6 +715,7 @@ export function LogsView() {
           selfScoped={isAccessKey}
           onAdvancedOpenChange={setAdvancedOpen}
           onUpdateField={updateDraftField}
+          onApplyFacet={applyFacet}
           onRemoveFilter={removeFilter}
           onApply={() => void applyFilters()}
           onReset={() => void resetFilters()}
@@ -714,7 +751,7 @@ export function LogsView() {
                       variant="secondary"
                       size="sm"
                       label={t('common.retry')}
-                      onClick={() => void logsQuery.refetch()}
+                      onClick={() => void refreshLogs()}
                     />
                   }
                 />
@@ -730,7 +767,7 @@ export function LogsView() {
                         variant="secondary"
                         size="sm"
                         label={t('common.retry')}
-                        onClick={() => void logsQuery.refetch()}
+                        onClick={() => void refreshLogs()}
                       />
                     }
                   />
