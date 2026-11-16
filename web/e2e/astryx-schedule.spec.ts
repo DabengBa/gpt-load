@@ -393,6 +393,14 @@ test('advanced concurrency survives a row toggle so one save carries every draft
   page,
 }) => {
   const { patches } = await installScheduleRoutes(page)
+  await page.route('**/api/model-route/schedule/detail*', async (route) => {
+    const detail = detailForModel('worker')
+    if (patches.length > 0) {
+      detail.snapshot_revision = 12
+      detail.groups[0]!.entries[0]!.enabled = false
+    }
+    await route.fulfill(response(detail))
+  })
   await openSchedule(page, '?schedule_model=worker')
   await waitForScheduleDetailReady(page)
   await moreButton(page).click()
@@ -874,6 +882,10 @@ for (const width of [1440, 390]) {
     await expect(page.getByRole('alert').first()).toBeVisible()
     await assertOrder(initial)
     fail = false
+    // The 500 response cannot prove whether the write committed; reload before
+    // deciding what to do with the preserved draft in this controlled fixture.
+    await page.reload()
+    await waitForScheduleDetailReady(page)
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(page).not.toHaveURL(/schedule_draft=/)
     await assertOrder(['1:entry-a', '1:entry-b', '1:entry-c', '1:entry-d', '2:entry-e'])
@@ -1127,6 +1139,265 @@ test('rapid switches across entries commit both intentions', async ({ page }) =>
   await expect.poll(() => state.groups[1]!.entries[0]!.enabled).toBe(false)
   expect(state.groups[0]!.entries[0]!.enabled).toBe(false)
   expect(requests.map((request) => request.snapshot_revision)).toEqual([11, 12])
+})
+
+test('rapid repeated switch retains the final intention', async ({ page }) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const toggle = rows(page).first().getByRole('switch')
+  await toggle.click()
+  await expect.poll(() => requests.length).toBe(1)
+  try {
+    await expect(toggle).toBeEnabled()
+    await toggle.click()
+  } finally {
+    releaseFirst()
+  }
+  await expect.poll(() => requests.length).toBe(2)
+  await expect.poll(() => state.groups[0]!.entries[0]!.enabled).toBe(true)
+  await expect(toggle).toBeChecked()
+})
+
+test('switch recovers after unrelated configuration changes', async ({ page }) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await rows(page).first().getByRole('switch').click()
+  await expect.poll(() => requests.length).toBe(1)
+  state.groups[1]!.entries[0]!.weight = 73
+  state.snapshot_revision++
+  releaseFirst()
+  await expect.poll(() => state.groups[0]!.entries[0]!.enabled).toBe(false)
+  expect(state.groups[1]!.entries[0]!.weight).toBe(73)
+  expect(requests.map((request) => request.snapshot_revision)).toEqual([11, 12])
+  await expect(page.getByText('The configuration changed. Refresh and try again.')).toHaveCount(0)
+})
+
+test('recovered first switch does not authorize a replaced second target', async ({ page }) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await rows(page).first().getByRole('switch').click()
+  await expect.poll(() => requests.length).toBe(1)
+  await rows(page).nth(1).getByRole('switch').click()
+  state.groups[1]!.entries[0]!.model_id = 'replacement'
+  state.snapshot_revision++
+  releaseFirst()
+  await expect(
+    page.getByText('The configuration changed. Refresh and try again.').first(),
+  ).toBeVisible()
+  expect(requests).toHaveLength(2)
+  expect(state.groups[1]!.entries[0]!.enabled).toBe(true)
+})
+
+test('third click during second write retains latest intent', async ({ page }) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page)
+  let releaseSecond = () => {}
+  const held = new Promise<void>((resolve) => {
+    releaseSecond = resolve
+  })
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() !== 'PATCH' || requests.length !== 1) return route.fallback()
+    const patch = route.request().postDataJSON() as SchedulePatch
+    requests.push(patch)
+    await held
+    state.groups[0]!.entries[0]!.enabled = patch.updates[0]!.enabled!
+    state.snapshot_revision++
+    await route.fulfill(response({ snapshot_revision_new: state.snapshot_revision, detail: null }))
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  const toggle = rows(page).first().getByRole('switch')
+  await toggle.click()
+  await expect.poll(() => requests.length).toBe(1)
+  await toggle.click()
+  releaseFirst()
+  await expect.poll(() => requests.length).toBe(2)
+  await toggle.click()
+  releaseSecond()
+  await expect.poll(() => requests.length).toBe(3)
+  await expect.poll(() => state.groups[0]!.entries[0]!.enabled).toBe(false)
+})
+
+test('late unknown result blocks its model but not the newly selected model', async ({ page }) => {
+  const { requests, releaseFirst } = await installVersionedSchedule(page)
+  let releaseFailure = () => {}
+  const held = new Promise<void>((resolve) => {
+    releaseFailure = resolve
+  })
+  await page.route('**/api/model-route/schedule/detail*', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('external_model') === 'worker-b')
+      return route.fulfill(response(detailForModel('worker-b')))
+    return route.fallback()
+  })
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback()
+    const patch = route.request().postDataJSON() as SchedulePatch
+    if (patch.external_model !== 'worker') return route.fallback()
+    requests.push(patch)
+    await held
+    await route.abort('failed')
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await rows(page).first().getByRole('switch').click()
+  await expect.poll(() => requests.length).toBe(1)
+  await page.getByRole('button', { name: 'worker-b', exact: true }).click()
+  await expect(page).toHaveURL(/schedule_model=worker-b/)
+  releaseFailure()
+  await expect(rows(page).nth(1).getByRole('switch')).toBeEnabled()
+  await page.getByRole('button', { name: 'worker', exact: true }).click()
+  await expect(rows(page).first().getByRole('switch')).toBeDisabled()
+  releaseFirst()
+})
+
+test('recovered switch does not authorize an old draft', async ({ page }) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await page.locator('#weight-1').fill('37')
+  await rows(page).first().getByRole('switch').click()
+  await expect.poll(() => requests.length).toBe(1)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  state.groups[1]!.entries[0]!.weight = 73
+  state.snapshot_revision++
+  releaseFirst()
+  await expect.poll(() => state.groups[0]!.entries[0]!.enabled).toBe(false)
+  await expect(
+    page.getByText('The configuration changed. Refresh and try again.').first(),
+  ).toBeVisible()
+  expect(requests).toHaveLength(2)
+  expect(state.groups[1]!.entries[0]!.weight).toBe(73)
+  await expect(page.locator('#weight-1')).toHaveValue('37')
+  await expect(page).toHaveURL(/schedule_draft=/)
+})
+
+test('switch does not overwrite a changed target', async ({ page }) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page)
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await rows(page).first().getByRole('switch').click()
+  await expect.poll(() => requests.length).toBe(1)
+  state.groups[0]!.entries[0]!.weight = 73
+  state.snapshot_revision++
+  releaseFirst()
+  await expect(
+    page.getByText('The configuration changed. Refresh and try again.').first(),
+  ).toBeVisible()
+  expect(requests).toHaveLength(1)
+  expect(state.groups[0]!.entries[0]!.enabled).toBe(true)
+})
+
+test('unknown switch result blocks dependent writes', async ({ page }) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page)
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback()
+    requests.push(route.request().postDataJSON() as SchedulePatch)
+    await route.abort('failed')
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await page.locator('#weight-1').fill('37')
+  await rows(page).first().getByRole('switch').click()
+  await expect(
+    page
+      .getByText(
+        'The result is unknown. Confirm the request has finished, reload the page, and verify the configuration before making changes.',
+      )
+      .first(),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect(requests).toHaveLength(1)
+  expect(state.groups[1]!.entries[0]!.weight).not.toBe(37)
+  await expect(page.locator('#weight-1')).toHaveValue('37')
+  await expect(page.getByRole('button', { name: 'Refresh to resolve' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Discard changes', exact: true }).click()
+  await expect(
+    page
+      .getByTestId('schedule-panel')
+      .getByRole('alert')
+      .filter({ hasText: 'The result is unknown.' }),
+  ).toBeVisible()
+  await expect(rows(page).first().getByRole('switch')).toBeDisabled()
+  releaseFirst()
+})
+
+test('unknown switch result stays blocked when old observation precedes a late commit', async ({
+  page,
+}) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page)
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback()
+    requests.push(route.request().postDataJSON() as SchedulePatch)
+    await route.abort('failed')
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await rows(page).first().getByRole('switch').click()
+  await expect(
+    page
+      .getByText(
+        'The result is unknown. Confirm the request has finished, reload the page, and verify the configuration before making changes.',
+      )
+      .first(),
+  ).toBeVisible()
+  expect(state.groups[0]!.entries[0]!.enabled).toBe(true)
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(rows(page).first().getByRole('switch')).toBeDisabled()
+  state.groups[0]!.entries[0]!.enabled = false
+  state.snapshot_revision++
+  await page.locator('#weight-1').fill('37')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  expect(requests).toHaveLength(1)
+  expect(state.groups[1]!.entries[0]!.weight).not.toBe(37)
+  releaseFirst()
+})
+
+test('a committed switch with an error response remains unknown', async ({ page }) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page)
+  await page.route('**/api/model-route/schedule', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback()
+    requests.push(route.request().postDataJSON() as SchedulePatch)
+    state.groups[0]!.entries[0]!.enabled = false
+    state.snapshot_revision++
+    await route.fulfill(response({}, 500))
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await rows(page).first().getByRole('switch').click()
+  await expect(
+    page
+      .getByText(
+        'The result is unknown. Confirm the request has finished, reload the page, and verify the configuration before making changes.',
+      )
+      .first(),
+  ).toBeVisible()
+  expect(state.groups[0]!.entries[0]!.enabled).toBe(false)
+  await expect(rows(page).nth(1).getByRole('switch')).toBeDisabled()
+  expect(requests).toHaveLength(1)
+  releaseFirst()
+})
+
+test('successful switch with failed refresh blocks further writes', async ({ page }) => {
+  const { state, requests, releaseFirst } = await installVersionedSchedule(page, {
+    failRefresh: true,
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await waitForScheduleDetailReady(page)
+  await rows(page).first().getByRole('switch').click()
+  await expect.poll(() => requests.length).toBe(1)
+  releaseFirst()
+  await expect(
+    page
+      .getByText(
+        'The change was saved, but refreshing failed. Refresh before making further changes.',
+      )
+      .first(),
+  ).toBeVisible()
+  expect(state.groups[0]!.entries[0]!.enabled).toBe(false)
+  await expect(rows(page).nth(1).getByRole('switch')).toBeDisabled()
+  expect(requests).toHaveLength(1)
 })
 
 test('save following an in-flight switch commits the draft', async ({ page }) => {
@@ -2175,7 +2446,7 @@ for (const outcome of ['error', 'conflict'] as const) {
         .getByText(
           outcome === 'conflict'
             ? 'The configuration changed. Refresh and try again.'
-            : 'Save failed.',
+            : 'The result is unknown. Confirm the request has finished, reload the page, and verify the configuration before making changes.',
         )
         .first(),
     ).toBeVisible()
@@ -2248,7 +2519,7 @@ for (const outcome of ['error', 'conflict'] as const) {
         .getByText(
           outcome === 'conflict'
             ? 'The configuration changed. Refresh and try again.'
-            : 'Save failed.',
+            : 'The result is unknown. Confirm the request has finished, reload the page, and verify the configuration before making changes.',
         )
         .first(),
     ).toBeVisible()

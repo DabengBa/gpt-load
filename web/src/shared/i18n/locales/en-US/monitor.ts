@@ -298,6 +298,8 @@ export default {
         conflict: 'The configuration changed. Refresh and try again.',
         refreshAfterWriteFailed:
           'The change was saved, but refreshing failed. Refresh before making further changes.',
+        writeResultUnknown:
+          'The result is unknown. Confirm the request has finished, reload the page, and verify the configuration before making changes.',
         refreshToResolve: 'Refresh to resolve',
         recoverFailed: 'Recovery failed.',
         noEntries: 'No entries are available.',
