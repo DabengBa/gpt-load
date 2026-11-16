@@ -289,6 +289,7 @@ export default {
         saveFailed: '保存失败。',
         conflict: '配置已发生变化，请刷新后重试。',
         refreshAfterWriteFailed: '更改已保存，但刷新失败。请刷新后再继续操作。',
+        writeResultUnknown: '操作结果未知。请确认该请求已结束，重新加载页面并核实配置后再操作。',
         refreshToResolve: '刷新以解决',
         recoverFailed: '恢复失败。',
         noEntries: '当前没有条目。',

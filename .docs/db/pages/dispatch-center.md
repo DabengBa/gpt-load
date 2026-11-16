@@ -55,9 +55,18 @@ model preserved.
   group is disabled.
 - Unsaved priority and weight edits show an unsaved share preview; they do not
   change actual scheduling or the saved eligibility snapshot. Enabling or
-  disabling an entry takes effect immediately; if the action fails, its prior
-  state is restored. Recovery also takes effect immediately, while other edits
-  are saved together.
+  disabling an entry is submitted immediately without saving the other edits;
+  rapid switch changes retain the latest intention. Recovery also takes effect
+  immediately, while other edits are saved together.
+- If another configuration change conflicts with a switch, the switch can be
+  retried automatically only when its target is still unchanged. Otherwise a
+  conflict is shown instead of overwriting the changed target. An existing
+  draft is retained but is not automatically saved over external changes.
+- If a write's result is unknown, the page warns the administrator to verify
+  the configuration and blocks further switches and draft saves for that
+  model. A refresh alone does not prove an unknown write did not commit later.
+  If a write succeeded but its subsequent refresh failed, further switches and
+  draft saves are blocked until the saved configuration is refreshed.
 - Request counts and success rates describe the group over the past 24 hours,
   not the individual upstream model. With no group requests, success rate is
   shown as — rather than 0%.

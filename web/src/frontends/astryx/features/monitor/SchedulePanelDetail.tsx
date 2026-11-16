@@ -567,10 +567,18 @@ export function SchedulePanelDetail({
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle')
   const [saveError, setSaveError] = useState('')
   const [recovering, setRecovering] = useState('')
-  const [togglingEntries, setTogglingEntries] = useState<ReadonlySet<string>>(new Set())
+
   const [optimisticEnabled, setOptimisticEnabled] = useState<ReadonlyMap<string, boolean>>(
     new Map(),
   )
+  const toggleCountsRef = useRef(new Map<string, number>())
+  const writeBlocksRef = useRef(
+    new Map<string, { kind: 'unknown' | 'refresh'; revision?: number }>(),
+  )
+  const [writeBlocks, setWriteBlocks] = useState(
+    new Map<string, { kind: 'unknown' | 'refresh'; revision?: number }>(),
+  )
+  const staleDraftRef = useRef(false)
   const [preserveDraftRevisions, setPreserveDraftRevisions] = useState<ReadonlySet<number>>(
     new Set(),
   )
@@ -608,6 +616,10 @@ export function SchedulePanelDetail({
     context: string
     count: number
     aborted: boolean
+    externalChange: boolean
+    ownEnabled: Map<string, boolean>
+    revisions: Set<number>
+    observed?: ModelRouteScheduleDetailDto
   } | null>(null)
   const callbacksRef = useRef({
     onDraftChange,
@@ -750,6 +762,10 @@ export function SchedulePanelDetail({
       (draft) => hasOwn(draft, 'concurrency_limit') && draft.concurrency_limit === null,
     )
   const dirty = Object.keys(draftMap).length > 0 || invalid
+  const dirtyRef = useRef(dirty)
+  useEffect(() => {
+    dirtyRef.current = dirty
+  }, [dirty])
   const hasScheduleDraft = Object.values(draftMap).some(
     (draft) => hasOwn(draft, 'weight') || hasOwn(draft, 'priority'),
   )
@@ -821,12 +837,65 @@ export function SchedulePanelDetail({
     return JSON.stringify([value.protocol, value.external_model, value.operation])
   }
 
+  function blockWrite(context: string, kind: 'unknown' | 'refresh', revision?: number): void {
+    const next = new Map(writeBlocksRef.current).set(context, { kind, revision })
+    writeBlocksRef.current = next
+    if (mountedRef.current) setWriteBlocks(next)
+  }
+
+  useEffect(() => {
+    const context = detail === undefined ? '' : contextKey(detail)
+    const target = writeBlocksRef.current.get(context)
+    if (
+      target?.kind === 'refresh' &&
+      detail !== undefined &&
+      target.revision !== undefined &&
+      detail.snapshot_revision >= target.revision
+    ) {
+      const next = new Map(writeBlocksRef.current)
+      next.delete(context)
+      writeBlocksRef.current = next
+      setWriteBlocks(next)
+    }
+  }, [detail, writeBlocks])
+
+  function sameToggleTarget(
+    baseline: ModelRouteScheduleDetailDto,
+    observed: ModelRouteScheduleDetailDto,
+    groupID: number,
+    entryID: string,
+    ownEnabled: boolean | undefined,
+  ): boolean {
+    if (contextKey(baseline) !== contextKey(observed)) return false
+    const beforeGroup = baseline.groups.find((group) => group.group_id === groupID)
+    const afterGroup = observed.groups.find((group) => group.group_id === groupID)
+    const before = beforeGroup?.entries.find((entry) => entry.entry_id === entryID)
+    const after = afterGroup?.entries.find((entry) => entry.entry_id === entryID)
+    if (!beforeGroup || !afterGroup || !before || !after) return false
+    return (
+      beforeGroup.channel_id === afterGroup.channel_id &&
+      beforeGroup.enabled === afterGroup.enabled &&
+      before.model_id === after.model_id &&
+      before.alias === after.alias &&
+      (ownEnabled ?? before.enabled) === after.enabled &&
+      before.weight === after.weight &&
+      before.priority === after.priority &&
+      before.concurrency_limit === after.concurrency_limit &&
+      before.reasoning.configured === after.reasoning.configured &&
+      before.circuit_breaker.configured.blacklist_threshold ===
+        after.circuit_breaker.configured.blacklist_threshold &&
+      before.circuit_breaker.configured.cooldown_seconds ===
+        after.circuit_breaker.configured.cooldown_seconds
+    )
+  }
+
   // A queued write may advance only through our own consecutive publication.
   // The response can include a later publication, so it is not itself proof.
   async function coordinatedWrite(
     body: ModelRouteSchedulePatchRequest,
     current: ModelRouteScheduleDetailDto,
     committed: (revision: number) => void,
+    toggle?: { groupID: number; entryID: string; enabled: boolean },
   ): Promise<boolean> {
     const context = contextKey(current)
     if (writesRef.current !== null && writesRef.current.context !== context) {
@@ -842,6 +911,9 @@ export function SchedulePanelDetail({
         context,
         count: 0,
         aborted: false,
+        externalChange: false,
+        ownEnabled: new Map(),
+        revisions: new Set([body.snapshot_revision]),
       }
       writesRef.current = queue
     }
@@ -851,21 +923,74 @@ export function SchedulePanelDetail({
     const task = (async () => {
       if (
         !(await previous) ||
+        writeBlocksRef.current.has(context) ||
+        (toggle === undefined && (active.externalChange || staleDraftRef.current)) ||
         active.aborted ||
         active.context !== context ||
-        (body.snapshot_revision !== active.initialRevision &&
-          body.snapshot_revision !== active.revision) ||
+        !active.revisions.has(body.snapshot_revision) ||
         !mountedRef.current ||
         currentDetailRef.current === undefined ||
         contextKey(currentDetailRef.current) !== context
       ) {
         throw new Error('schedule-write-conflict')
       }
-      const revision = active.revision
-      const response = await updateModelRouteSchedule(apiClient, {
-        ...body,
-        snapshot_revision: revision,
-      })
+      if (
+        toggle !== undefined &&
+        active.externalChange &&
+        (active.observed === undefined ||
+          !sameToggleTarget(
+            current,
+            active.observed,
+            toggle.groupID,
+            toggle.entryID,
+            active.ownEnabled.get(rowKey(toggle.groupID, toggle.entryID)),
+          ))
+      )
+        throw new Error('schedule-write-conflict')
+      let revision = active.revision
+      let response: Awaited<ReturnType<typeof updateModelRouteSchedule>>
+      for (let retries = 0; ; retries++) {
+        try {
+          response = await updateModelRouteSchedule(apiClient, {
+            ...body,
+            snapshot_revision: revision,
+          })
+          break
+        } catch (failure) {
+          if (!isModelRouteScheduleRevisionConflict(failure)) {
+            blockWrite(context, 'unknown')
+            throw failure
+          }
+          if (toggle === undefined || retries >= 2) throw failure
+          const refreshed = await getModelRouteScheduleDetail(apiClient, {
+            protocol: current.protocol,
+            external_model: current.external_model ?? '',
+            operation: current.operation,
+          })
+          active.externalChange = true
+          active.observed = refreshed
+          if (dirtyRef.current) staleDraftRef.current = true
+          if (
+            !mountedRef.current ||
+            currentDetailRef.current === undefined ||
+            contextKey(currentDetailRef.current) !== context ||
+            !sameToggleTarget(
+              current,
+              refreshed,
+              toggle.groupID,
+              toggle.entryID,
+              active.ownEnabled.get(rowKey(toggle.groupID, toggle.entryID)),
+            )
+          )
+            throw failure
+          revision = refreshed.snapshot_revision
+          active.revision = revision
+          active.revisions.add(revision)
+        }
+      }
+      if (toggle !== undefined) {
+        active.ownEnabled.set(rowKey(toggle.groupID, toggle.entryID), toggle.enabled)
+      }
       // A successful PATCH is final even if the following observation fails.
       committed(response.snapshot_revision_new)
       try {
@@ -884,6 +1009,8 @@ export function SchedulePanelDetail({
           response.snapshot_revision_new !== revision + 1 ||
           refreshed.snapshot_revision !== response.snapshot_revision_new
         ) {
+          active.externalChange = true
+          if (dirtyRef.current) staleDraftRef.current = true
           if (active.count > 1 && contextKey(currentDetailRef.current) === context) {
             setSaveStatus('error')
             setSaveError(text('conflict'))
@@ -900,12 +1027,15 @@ export function SchedulePanelDetail({
           refreshed,
         )
         active.revision = refreshed.snapshot_revision
+        active.revisions.add(refreshed.snapshot_revision)
+        active.observed = refreshed
         await applyInvalidationPlan(
           queryClient,
           mutationInvalidationPlans.modelRouteSchedule.update,
         )
         return true
       } catch {
+        blockWrite(context, 'refresh', response.snapshot_revision_new)
         if (
           mountedRef.current &&
           currentDetailRef.current !== undefined &&
@@ -938,13 +1068,14 @@ export function SchedulePanelDetail({
     const key = rowKey(groupID, entry.entry_id)
     if (
       current === undefined ||
-      togglingEntries.has(key) ||
+      writeBlocksRef.current.has(contextKey(current)) ||
       entry.entry_id.startsWith('derived:')
     ) {
       return
     }
     const revision = current.snapshot_revision
-    setTogglingEntries((previous) => withSetValue(previous, key))
+    toggleCountsRef.current.set(key, (toggleCountsRef.current.get(key) ?? 0) + 1)
+
     setOptimisticEnabled((previous) => withMapValue(previous, key, next))
     setPreserveDraftRevisions((previous) => withSetValue(previous, revision))
     setPreserveDraftSnapshots((previous) => withMapValue(previous, revision, cloneDrafts(draftMap)))
@@ -967,6 +1098,7 @@ export function SchedulePanelDetail({
             onSaved(nextRevision, false)
           }
         },
+        { groupID, entryID: entry.entry_id, enabled: next },
       )
     } catch (toggleFailure: unknown) {
       if (
@@ -979,18 +1111,21 @@ export function SchedulePanelDetail({
         isModelRouteScheduleRevisionConflict(toggleFailure) ||
         (toggleFailure instanceof Error && toggleFailure.message === 'schedule-write-conflict')
       setSaveStatus('error')
-      setSaveError(text(conflict ? 'conflict' : 'toggleFailed'))
+      setSaveError(conflict ? text('conflict') : t('monitor.schedule.detail.writeResultUnknown'))
       if (isModelRouteScheduleRevisionConflict(toggleFailure)) onRefresh()
       toast.show({
-        message: text(conflict ? 'conflict' : 'toggleFailed'),
+        message: conflict ? text('conflict') : t('monitor.schedule.detail.writeResultUnknown'),
         tone: 'danger',
       })
     } finally {
       await waitNextTick()
       setPreserveDraftRevisions((previous) => withoutSetValue(previous, revision))
       setPreserveDraftSnapshots((previous) => withoutMapValue(previous, revision))
-      setOptimisticEnabled((previous) => withoutMapValue(previous, key))
-      setTogglingEntries((previous) => withoutSetValue(previous, key))
+      const remaining = (toggleCountsRef.current.get(key) ?? 1) - 1
+      if (remaining === 0) {
+        toggleCountsRef.current.delete(key)
+        setOptimisticEnabled((previous) => withoutMapValue(previous, key))
+      } else toggleCountsRef.current.set(key, remaining)
     }
   }
 
@@ -1138,6 +1273,7 @@ export function SchedulePanelDetail({
   }
 
   function discard(): void {
+    staleDraftRef.current = false
     resetDrafts()
     emitDraftChange({})
   }
@@ -1145,6 +1281,18 @@ export function SchedulePanelDetail({
   async function save(): Promise<boolean> {
     if (detail === undefined || pending || invalid) return false
     if (!dirty) return true
+    const block = writeBlocksRef.current.get(contextKey(detail))
+    if (block !== undefined || staleDraftRef.current) {
+      setSaveStatus('error')
+      setSaveError(
+        block?.kind === 'unknown'
+          ? t('monitor.schedule.detail.writeResultUnknown')
+          : block?.kind === 'refresh'
+            ? t('monitor.schedule.detail.refreshAfterWriteFailed')
+            : text('conflict'),
+      )
+      return false
+    }
     const body: ModelRouteSchedulePatchRequest = {
       snapshot_revision: detail.snapshot_revision,
       protocol: detail.protocol,
@@ -1190,7 +1338,7 @@ export function SchedulePanelDetail({
         isModelRouteScheduleRevisionConflict(saveFailure) ||
           (saveFailure instanceof Error && saveFailure.message === 'schedule-write-conflict')
           ? text('conflict')
-          : text('saveFailed'),
+          : t('monitor.schedule.detail.writeResultUnknown'),
       )
       return false
     } finally {
@@ -1347,7 +1495,7 @@ export function SchedulePanelDetail({
               onRetry={onRefresh}
             />
           )}
-          {saveError !== '' && (
+          {(saveError !== '' || writeBlocks.get(contextKey(detail))?.kind === 'unknown') && (
             <div
               {...stylex.props(styles.inlineDanger)}
               role="alert"
@@ -1357,12 +1505,18 @@ export function SchedulePanelDetail({
               <span {...stylex.props(styles.inlineGlyph)} aria-hidden="true">
                 <TriangleAlert size={16} aria-hidden />
               </span>
-              <span {...stylex.props(styles.inlineMessage)}>{saveError}</span>
-              <span {...stylex.props(styles.inlineAction)}>
-                <button type="button" {...stylex.props(styles.linkButton)} onClick={onRefresh}>
-                  {text('refreshToResolve')}
-                </button>
+              <span {...stylex.props(styles.inlineMessage)}>
+                {writeBlocks.get(contextKey(detail))?.kind === 'unknown'
+                  ? t('monitor.schedule.detail.writeResultUnknown')
+                  : saveError}
               </span>
+              {writeBlocks.get(contextKey(detail))?.kind !== 'unknown' && (
+                <span {...stylex.props(styles.inlineAction)}>
+                  <button type="button" {...stylex.props(styles.linkButton)} onClick={onRefresh}>
+                    {text('refreshToResolve')}
+                  </button>
+                </span>
+              )}
             </div>
           )}
 
@@ -1635,7 +1789,11 @@ export function SchedulePanelDetail({
                             aria-checked={enabled}
                             aria-label={toggleLabel}
                             title={toggleLabel}
-                            disabled={pending || togglingEntries.has(key) || derived}
+                            disabled={
+                              pending ||
+                              (detail !== undefined && writeBlocks.has(contextKey(detail))) ||
+                              derived
+                            }
                             {...stylex.props(styles.toggle)}
                             onClick={() => {
                               void toggleEntryEnabled(group.group_id, entry, !enabled)
@@ -1780,7 +1938,11 @@ export function SchedulePanelDetail({
             pending={pending}
             status={saveStatus}
             error={saveStatus === 'error' ? saveError : ''}
-            errorActionLabel={saveStatus === 'error' ? text('refreshToResolve') : ''}
+            errorActionLabel={
+              saveStatus === 'error' && writeBlocks.get(contextKey(detail))?.kind !== 'unknown'
+                ? text('refreshToResolve')
+                : ''
+            }
             onErrorAction={onRefresh}
             statusContent={
               saveStatus === 'saved' ? (
