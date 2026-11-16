@@ -2,6 +2,7 @@ package bifrost
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"io"
@@ -73,6 +74,70 @@ func TestOfficialOpenAIResponsesCreateNativePassthrough(t *testing.T) {
 		t.Fatalf("response bytes changed:\n got: %s\nwant: %s", result.Body, responseBody)
 	}
 	assertUsage(t, result.Usage, usage.Tokens{UncachedInput: 6, CacheRead: 4, Output: 3})
+}
+
+func TestResponsesCreateMislabeledJSONContentType(t *testing.T) {
+	const completed = `{"id":"resp_1","object":"response","status":"completed","model":"upstream-model","output":[]}`
+	tests := []struct {
+		name, body string
+		status     int
+		wantType   string
+	}{
+		{"completed", completed, 200, "application/json"},
+		{"tool_call", `{"object":"response","status":"completed","output":[{"type":"shell_call","id":"shell_1","call_id":"call_1","action":{"commands":["pwd"]}}]}`, 200, "application/json"},
+		{"malformed", `{"object":`, 200, "text/event-stream"},
+		{"incomplete", `{"object":"response","status":"incomplete","output":[]}`, 200, "text/event-stream"},
+		{"response_error", `{"object":"response","status":"completed","error":{"message":"failed"},"output":[]}`, 200, "text/event-stream"},
+		{"invalid_message", `{"object":"response","status":"completed","output":[{"type":"message","content":null}]}`, 200, "text/event-stream"},
+		{"invalid_shell_output", `{"object":"response","status":"completed","output":[{"type":"shell_call_output","id":"s1","call_id":"c1","output":[{"stdout":"","stderr":"","outcome":{"type":"exit"}}]}]}`, 200, "text/event-stream"},
+		{"invalid_image_result", `{"object":"response","status":"completed","output":[{"type":"image_generation_call","id":"ig_1","status":"failed","result":{}}]}`, 200, "text/event-stream"},
+		{"invalid_search_output", `{"object":"response","status":"completed","output":[{"type":"tool_search_output","id":"s","call_id":null,"status":"completed","execution":"server","tools":[null]}]}`, 200, "text/event-stream"},
+		{"invalid_patch_output", `{"object":"response","status":"completed","output":[{"type":"apply_patch_call_output","id":"p","call_id":"c","status":"completed","output":{}}]}`, 200, "text/event-stream"},
+		{"invalid_function_output", `{"object":"response","status":"completed","output":[{"type":"function_call_output","id":"f","status":"completed","output":[null]}]}`, 200, "text/event-stream"},
+		{"invalid_local_output", `{"object":"response","status":"completed","output":[{"type":"local_shell_call_output","id":"l","output":null}]}`, 200, "text/event-stream"},
+		{"sse", responsesSSEReadyTerminal(), 200, "text/event-stream"},
+		{"error_status", completed, 400, "text/event-stream"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(tt.status)
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			defer server.Close()
+			runtime := newOfficialOpenAITestRuntime(t, server.URL)
+			spec := openAIResponsesSpec(execution.OperationResponsesCreate, http.MethodPost, "/v1/responses")
+			spec.ClientModel = spec.UpstreamModel
+			result := runtime.Execute(context.Background(), spec)
+			if result.Header.Get("Content-Type") != tt.wantType {
+				t.Fatalf("content type = %q, want %q; error=%+v", result.Header.Get("Content-Type"), tt.wantType, result.Error)
+			}
+			if string(result.Body) != tt.body {
+				t.Fatalf("body changed: %q", result.Body)
+			}
+		})
+	}
+}
+
+func TestResponsesCreateMislabeledGzipJSON(t *testing.T) {
+	const body = `{"object":"response","status":"completed","output":[],"usage":{"input_tokens":20,"output_tokens":1,"total_tokens":21}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Content-Encoding", "gzip")
+		writer := gzip.NewWriter(w)
+		_, _ = io.WriteString(writer, body)
+		_ = writer.Close()
+	}))
+	defer server.Close()
+	runtime := newOfficialOpenAITestRuntime(t, server.URL)
+	spec := openAIResponsesSpec(execution.OperationResponsesCreate, http.MethodPost, "/v1/responses")
+	spec.ClientModel = spec.UpstreamModel
+	result := runtime.Execute(context.Background(), spec)
+	if result.Error != nil || string(result.Body) != body || result.Header.Get("Content-Type") != "application/json" || result.Header.Get("Content-Encoding") != "" {
+		t.Fatalf("result = %+v body=%q", result, result.Body)
+	}
+	assertUsage(t, result.Usage, usage.Tokens{UncachedInput: 20, Output: 1})
 }
 
 func TestOfficialOpenAIResponsesCreateNativeStream(t *testing.T) {
