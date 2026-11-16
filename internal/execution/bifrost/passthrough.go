@@ -412,7 +412,9 @@ complete:
 			decoded, err = contentcoding.DecodeLimited(encoding, bodyBytes, r.unaryResponseBodyLimit(spec))
 		}
 		if err == nil && isEventStreamContentType(headers.Get("Content-Type")) {
-			decoded, err = normalizeOpenAIResponsesProbeSSE(decoded)
+			if !validCompletedResponsesJSON(decoded) {
+				decoded, err = normalizeOpenAIResponsesProbeSSE(decoded)
+			}
 		}
 		if err != nil {
 			failure := startedUnaryFailure(status, headers, execution.ErrorKindProvider, "upstream returned an invalid protocol probe response")
@@ -425,6 +427,22 @@ complete:
 		headers.Set("Content-Type", "application/json")
 		if usageEvidence == nil {
 			usageEvidence = responsesProbeUsage(bodyBytes)
+		}
+	}
+	if spec.Operation == execution.OperationResponsesCreate && spec.ClientProtocol == protocol.OpenAIResponses &&
+		prepared.upstreamProtocol == protocol.OpenAIResponses && status >= http.StatusOK && status < http.StatusMultipleChoices &&
+		isEventStreamContentType(headers.Get("Content-Type")) {
+		encoding, err := contentcoding.ParseContentEncoding(headers.Values("Content-Encoding"))
+		if err == nil {
+			decoded, decodeErr := contentcoding.DecodeLimited(encoding, bodyBytes, r.unaryResponseBodyLimit(spec))
+			if decodeErr == nil && validCompletedResponsesJSON(decoded) {
+				bodyBytes = decoded
+				if usageEvidence == nil {
+					usageEvidence = responsesProbeUsage(bodyBytes)
+				}
+				httpheader.StripRepresentationMetadata(headers)
+				headers.Set("Content-Type", "application/json")
+			}
 		}
 	}
 	if looksLikeEncodedResponse(bodyBytes) {
@@ -496,6 +514,337 @@ complete:
 func isEventStreamContentType(value string) bool {
 	mediaType, _, err := mime.ParseMediaType(value)
 	return err == nil && strings.EqualFold(mediaType, "text/event-stream")
+}
+
+func validCompletedResponsesJSON(body []byte) bool {
+	var response struct {
+		Object string            `json:"object"`
+		Status string            `json:"status"`
+		Output []json.RawMessage `json:"output"`
+		Error  json.RawMessage   `json:"error"`
+	}
+	if json.Unmarshal(body, &response) != nil || response.Object != "response" || response.Status != "completed" ||
+		response.Output == nil || (len(response.Error) > 0 && !bytes.Equal(bytes.TrimSpace(response.Error), []byte("null"))) {
+		return false
+	}
+	for _, item := range response.Output {
+		if !validCompletedResponsesItem(item) {
+			return false
+		}
+	}
+	return true
+}
+
+func validCompletedResponsesItem(item json.RawMessage) bool {
+	fields, err := decodeNativeJSONObject(item)
+	if err != nil || !gatewayProbeStringFields(fields, "type") {
+		return false
+	}
+	var itemType string
+	if json.Unmarshal(fields["type"], &itemType) != nil || itemType == "" {
+		return false
+	}
+	switch itemType {
+	case "computer_call":
+		if len(fields["actions"]) == 0 {
+			if !validGatewayProbeResponsesItem(item, fields) {
+				return false
+			}
+		} else if !gatewayProbeStringFields(fields, "id", "call_id") || !completedResponsesItemStatus(fields["status"]) ||
+			!validCompletedResponsesSafetyChecks(fields["pending_safety_checks"]) ||
+			!validCompletedResponsesComputerActions(fields["actions"]) ||
+			(len(fields["action"]) > 0 && !validGatewayProbeResponsesItem(item, fields)) {
+			return false
+		}
+	case "computer_call_output":
+		output, err := decodeNativeJSONObject(fields["output"])
+		if !gatewayProbeStringFields(fields, "id", "call_id") ||
+			!(completedResponsesItemStatus(fields["status"]) || jsonStringEquals(fields["status"], "failed")) ||
+			err != nil || !jsonStringEquals(output["type"], "computer_screenshot") ||
+			!optionalCompletedResponsesString(output, "file_id", false) || !optionalCompletedResponsesString(output, "image_url", false) ||
+			(len(fields["acknowledged_safety_checks"]) > 0 && !validCompletedResponsesSafetyChecks(fields["acknowledged_safety_checks"])) {
+			return false
+		}
+	case "custom_tool_call_output":
+		if !gatewayProbeStringFields(fields, "id", "call_id") || !completedResponsesItemStatus(fields["status"]) ||
+			!validCompletedResponsesFunctionOutput(fields["output"]) {
+			return false
+		}
+	case "mcp_approval_response":
+		var approve *bool
+		if !gatewayProbeStringFields(fields, "id", "approval_request_id") || json.Unmarshal(fields["approve"], &approve) != nil || approve == nil ||
+			!optionalCompletedResponsesString(fields, "reason", true) {
+			return false
+		}
+	case "program":
+		if !gatewayProbeStringFields(fields, "id", "call_id", "code", "fingerprint") {
+			return false
+		}
+	case "program_output":
+		if !gatewayProbeStringFields(fields, "id", "call_id", "result") ||
+			!(jsonStringEquals(fields["status"], "completed") || jsonStringEquals(fields["status"], "incomplete")) {
+			return false
+		}
+	case "additional_tools":
+		if !gatewayProbeStringFields(fields, "id") || !validCompletedResponsesRole(fields["role"]) || !validCompletedResponsesTools(fields["tools"]) {
+			return false
+		}
+	default:
+		return validCompletedResponsesToolItem(item, fields, itemType)
+	}
+	return true
+}
+
+func validCompletedResponsesToolItem(item json.RawMessage, fields map[string]json.RawMessage, itemType string) bool {
+	switch itemType {
+	case "tool_search_call", "tool_search_output":
+		if !gatewayProbeStringFields(fields, "id") ||
+			!(gatewayProbeNullField(fields, "call_id") || gatewayProbeStringFields(fields, "call_id")) ||
+			!completedResponsesItemStatus(fields["status"]) ||
+			!(jsonStringEquals(fields["execution"], "server") || jsonStringEquals(fields["execution"], "client")) {
+			return false
+		}
+		if itemType == "tool_search_call" {
+			if len(fields["arguments"]) == 0 {
+				return false
+			}
+		} else if !validCompletedResponsesTools(fields["tools"]) {
+			return false
+		}
+	case "apply_patch_call_output":
+		if !gatewayProbeStringFields(fields, "id", "call_id") ||
+			!(jsonStringEquals(fields["status"], "completed") || jsonStringEquals(fields["status"], "failed")) ||
+			!optionalCompletedResponsesString(fields, "output", true) {
+			return false
+		}
+	case "function_call_output":
+		if !gatewayProbeStringFields(fields, "id") || !completedResponsesItemStatus(fields["status"]) ||
+			!optionalCompletedResponsesString(fields, "call_id", false) || !validCompletedResponsesFunctionOutput(fields["output"]) {
+			return false
+		}
+	case "local_shell_call_output":
+		if !gatewayProbeStringFields(fields, "id", "output") ||
+			(len(fields["status"]) > 0 && !gatewayProbeNullField(fields, "status") && !completedResponsesItemStatus(fields["status"])) {
+			return false
+		}
+	case "shell_call_output":
+		if !validCompletedResponsesShellOutput(fields) {
+			return false
+		}
+	case "image_generation_call":
+		if !gatewayProbeStringFields(fields, "id", "status") ||
+			!(gatewayProbeNullField(fields, "result") || gatewayProbeStringFields(fields, "result")) {
+			return false
+		}
+	case "shell_call", "apply_patch_call":
+		if !gatewayProbeStringFields(fields, "id", "call_id") {
+			return false
+		}
+		field := "action"
+		if itemType == "apply_patch_call" {
+			field = "operation"
+		}
+		operation, err := decodeNativeJSONObject(fields[field])
+		if err != nil {
+			return false
+		}
+		if itemType == "shell_call" && !gatewayProbeStringArray(operation["commands"]) {
+			return false
+		}
+		if itemType == "apply_patch_call" {
+			if !gatewayProbeStringFields(operation, "type", "path") {
+				return false
+			}
+			var kind string
+			_ = json.Unmarshal(operation["type"], &kind)
+			if kind != "delete_file" && kind != "create_file" && kind != "update_file" {
+				return false
+			}
+			if kind != "delete_file" && !gatewayProbeStringFields(operation, "diff") {
+				return false
+			}
+		}
+	default:
+		if !validGatewayProbeResponsesItem(item, fields) {
+			return false
+		}
+	}
+	return true
+}
+
+func completedResponsesItemStatus(raw json.RawMessage) bool {
+	return jsonStringEquals(raw, "in_progress") || jsonStringEquals(raw, "completed") || jsonStringEquals(raw, "incomplete")
+}
+
+func validCompletedResponsesRole(raw json.RawMessage) bool {
+	for _, role := range []string{"unknown", "user", "assistant", "system", "critic", "discriminator", "developer", "tool"} {
+		if jsonStringEquals(raw, role) {
+			return true
+		}
+	}
+	return false
+}
+
+func validCompletedResponsesSafetyChecks(raw json.RawMessage) bool {
+	var checks []json.RawMessage
+	if json.Unmarshal(raw, &checks) != nil || checks == nil {
+		return false
+	}
+	for _, check := range checks {
+		fields, err := decodeNativeJSONObject(check)
+		if err != nil || !gatewayProbeStringFields(fields, "id") || !optionalCompletedResponsesString(fields, "code", true) ||
+			!optionalCompletedResponsesString(fields, "message", true) {
+			return false
+		}
+	}
+	return true
+}
+
+func validCompletedResponsesComputerActions(raw json.RawMessage) bool {
+	var actions []json.RawMessage
+	if json.Unmarshal(raw, &actions) != nil || actions == nil {
+		return false
+	}
+	for _, rawAction := range actions {
+		action, err := decodeNativeJSONObject(rawAction)
+		if err != nil || !validCompletedResponsesComputerAction(action) {
+			return false
+		}
+	}
+	return true
+}
+
+func validCompletedResponsesComputerAction(action map[string]json.RawMessage) bool {
+	numbers := func(names ...string) bool {
+		for _, name := range names {
+			var number *float64
+			if json.Unmarshal(action[name], &number) != nil || number == nil {
+				return false
+			}
+		}
+		return true
+	}
+	optionalKeys := func() bool {
+		return len(action["keys"]) == 0 || gatewayProbeNullField(action, "keys") || gatewayProbeStringArray(action["keys"])
+	}
+	switch {
+	case jsonStringEquals(action["type"], "screenshot"), jsonStringEquals(action["type"], "wait"):
+		return true
+	case jsonStringEquals(action["type"], "click"):
+		return numbers("x", "y") && optionalKeys() && (jsonStringEquals(action["button"], "left") ||
+			jsonStringEquals(action["button"], "right") || jsonStringEquals(action["button"], "wheel") ||
+			jsonStringEquals(action["button"], "back") || jsonStringEquals(action["button"], "forward"))
+	case jsonStringEquals(action["type"], "double_click"):
+		return numbers("x", "y") && len(action["keys"]) > 0 && optionalKeys()
+	case jsonStringEquals(action["type"], "move"):
+		return numbers("x", "y") && optionalKeys()
+	case jsonStringEquals(action["type"], "scroll"):
+		return numbers("x", "y", "scroll_x", "scroll_y") && optionalKeys()
+	case jsonStringEquals(action["type"], "keypress"):
+		return gatewayProbeStringArray(action["keys"])
+	case jsonStringEquals(action["type"], "type"):
+		return gatewayProbeStringFields(action, "text")
+	case jsonStringEquals(action["type"], "drag"):
+		var path []json.RawMessage
+		if json.Unmarshal(action["path"], &path) != nil || path == nil || !optionalKeys() {
+			return false
+		}
+		for _, point := range path {
+			var coords struct {
+				X *float64 `json:"x"`
+				Y *float64 `json:"y"`
+			}
+			if json.Unmarshal(point, &coords) != nil || coords.X == nil || coords.Y == nil {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func optionalCompletedResponsesString(fields map[string]json.RawMessage, name string, nullable bool) bool {
+	return len(fields[name]) == 0 || nullable && gatewayProbeNullField(fields, name) || gatewayProbeStringFields(fields, name)
+}
+
+func validCompletedResponsesTools(raw json.RawMessage) bool {
+	var tools []json.RawMessage
+	if json.Unmarshal(raw, &tools) != nil || tools == nil {
+		return false
+	}
+	for _, tool := range tools {
+		fields, err := decodeNativeJSONObject(tool)
+		if err != nil || !gatewayProbeStringFields(fields, "type") || jsonStringEquals(fields["type"], "") {
+			return false
+		}
+	}
+	return true
+}
+
+func validCompletedResponsesFunctionOutput(raw json.RawMessage) bool {
+	if gatewayProbeStringFields(map[string]json.RawMessage{"output": raw}, "output") {
+		return true
+	}
+	var blocks []json.RawMessage
+	if json.Unmarshal(raw, &blocks) != nil || blocks == nil {
+		return false
+	}
+	for _, block := range blocks {
+		fields, err := decodeNativeJSONObject(block)
+		if err != nil {
+			return false
+		}
+		switch {
+		case jsonStringEquals(fields["type"], "input_text"):
+			if !gatewayProbeStringFields(fields, "text") {
+				return false
+			}
+		case jsonStringEquals(fields["type"], "input_image"):
+			if !(jsonStringEquals(fields["detail"], "auto") || jsonStringEquals(fields["detail"], "low") ||
+				jsonStringEquals(fields["detail"], "high") || jsonStringEquals(fields["detail"], "original")) ||
+				!optionalCompletedResponsesString(fields, "file_id", true) || !optionalCompletedResponsesString(fields, "image_url", true) {
+				return false
+			}
+		case jsonStringEquals(fields["type"], "input_file"):
+			if !optionalCompletedResponsesString(fields, "file_data", false) || !optionalCompletedResponsesString(fields, "file_id", true) ||
+				!optionalCompletedResponsesString(fields, "file_url", false) || !optionalCompletedResponsesString(fields, "filename", false) ||
+				(len(fields["detail"]) > 0 && !(jsonStringEquals(fields["detail"], "auto") || jsonStringEquals(fields["detail"], "low") || jsonStringEquals(fields["detail"], "high"))) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func validCompletedResponsesShellOutput(fields map[string]json.RawMessage) bool {
+	var chunks []json.RawMessage
+	if !gatewayProbeStringFields(fields, "id", "call_id") || json.Unmarshal(fields["output"], &chunks) != nil || chunks == nil {
+		return false
+	}
+	for _, chunk := range chunks {
+		content, err := decodeNativeJSONObject(chunk)
+		if err != nil || !gatewayProbeStringFields(content, "stdout", "stderr") {
+			return false
+		}
+		outcome, err := decodeNativeJSONObject(content["outcome"])
+		if err != nil {
+			return false
+		}
+		switch {
+		case jsonStringEquals(outcome["type"], "exit"):
+			var code *int
+			if json.Unmarshal(outcome["exit_code"], &code) != nil || code == nil {
+				return false
+			}
+		case jsonStringEquals(outcome["type"], "timeout"):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeOpenAIResponsesProbeSSE(body []byte) ([]byte, error) {

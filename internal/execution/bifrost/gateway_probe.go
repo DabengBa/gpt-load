@@ -113,7 +113,8 @@ func normalizeGatewayProtocolProbeResult(spec execution.AttemptSpec, result *exe
 	if err == nil {
 		body, err = contentcoding.DecodeLimited(encoding, result.Body, execution.UnaryResponseBodyLimit(spec.ClientProtocol))
 	}
-	if err != nil || !validGatewayProtocolProbeResponse(spec.ClientProtocol, body) {
+	if err != nil || (!validGatewayProtocolProbeResponse(spec.ClientProtocol, body) &&
+		!(spec.ClientProtocol == protocol.OpenAIResponses && validCompletedResponsesJSON(body))) {
 		*result = startedUnaryFailure(result.StatusCode, result.Header, execution.ErrorKindProvider, "upstream returned an invalid protocol probe response")
 		result.Error.OriginHint = execution.ErrorOriginUpstream
 		result.UpstreamProtocol = spec.ClientProtocol

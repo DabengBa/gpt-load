@@ -51,6 +51,55 @@ func responsesProbeCRLFFixture() string {
 	return strings.ReplaceAll(responsesSSEReadyTerminal(), "\n", "\r\n")
 }
 
+func TestResponsesUtilityAcceptsMislabeledCompletedJSON(t *testing.T) {
+	var event struct {
+		Response json.RawMessage `json:"response"`
+	}
+
+	if err := json.Unmarshal([]byte(responsesSSECompletedData()), &event); err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range []execution.Operation{execution.OperationProbe, execution.OperationModelTrace} {
+		t.Run(string(operation), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+				_, _ = w.Write(event.Response)
+			}))
+			defer server.Close()
+			runtime := newProtocolTestRuntime(t, testRuntimeOptions{allowPrivateNetwork: true, openAIBaseURL: server.URL})
+			spec := utilitySpec(channel.OpenAI, protocol.OpenAIResponses, operation, "", "", nil)
+			spec.ClientModel, spec.UpstreamModel = "probe-client", "probe-upstream"
+			spec.PromptText = "test prompt"
+			spec.ProbeMaxOutputTokens = testProbeOutputTokens
+			result := runtime.Execute(context.Background(), spec)
+			if result.Error != nil || result.StatusCode != http.StatusOK || result.Header.Get("Content-Type") != "application/json" {
+				t.Fatalf("result = %+v", result)
+			}
+			if operation == execution.OperationModelTrace && result.GeneratedText != "4" {
+				t.Fatalf("generated text = %q", result.GeneratedText)
+			}
+			assertUsage(t, result.Usage, usage.Tokens{UncachedInput: 20, Output: 1})
+		})
+	}
+}
+
+func TestResponsesUtilityAcceptsMislabeledJSONWithTool(t *testing.T) {
+	const body = `{"object":"response","status":"completed","output":[{"type":"shell_call","id":"shell_1","call_id":"call_1","action":{"commands":["pwd"]}},{"type":"message","content":[{"type":"output_text","text":"4"}]}]}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, body)
+	}))
+	defer server.Close()
+	runtime := newProtocolTestRuntime(t, testRuntimeOptions{allowPrivateNetwork: true, openAIBaseURL: server.URL})
+	spec := utilitySpec(channel.OpenAI, protocol.OpenAIResponses, execution.OperationModelTrace, "", "", nil)
+	spec.ClientModel, spec.UpstreamModel = "probe-client", "probe-upstream"
+	spec.PromptText, spec.ProbeMaxOutputTokens = "test", testProbeOutputTokens
+	result := runtime.Execute(context.Background(), spec)
+	if result.Error != nil || result.GeneratedText != "4" {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
 // TestNativeOpenAIResponsesProbeAcceptsCompletedSSE proves an OpenAI Responses
 // probe tolerates an upstream that ignores the non-streaming intent and
 // returns HTTP 200 text/event-stream ending in response.completed: the SSE is
