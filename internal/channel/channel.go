@@ -19,6 +19,7 @@ const (
 	GoogleVertex     = spec.GoogleVertex
 	GPTLoad          = spec.GPTLoad
 	NewAPI           = spec.NewAPI
+	MultiProtocol    = spec.MultiProtocol
 	CLIProxyAPI      = spec.CLIProxyAPI
 	Sub2API          = spec.Sub2API
 	OpenAICompatible = spec.OpenAICompatible

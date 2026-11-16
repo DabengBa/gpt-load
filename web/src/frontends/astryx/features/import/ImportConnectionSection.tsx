@@ -188,6 +188,8 @@ export function ImportConnectionSection({
 
   function baseURLDescription(): string {
     switch (channel?.channel_id) {
+      case 'multi_protocol':
+        return t('import.connection.multiProtocolUrlDescription')
       case 'gpt_load':
         return t('import.connection.gptLoadUrlDescription')
       case 'newapi':
@@ -206,9 +208,15 @@ export function ImportConnectionSection({
   }
 
   function baseURLVersionWarning(key: string): string | undefined {
-    if (key !== 'base_url' || !channel?.default_base_url) return undefined
+    if (key !== 'base_url' || !channel) return undefined
     const value = params[key]?.trim() ?? ''
     if (!value || !isValidUpstreamBaseURL(value)) return undefined
+    if (channel.channel_id === 'multi_protocol') {
+      return /\/(?:v1|v1beta)\/?$/i.test(new URL(value).pathname)
+        ? t('import.connection.multiProtocolVersionWarning')
+        : undefined
+    }
+    if (!channel.default_base_url) return undefined
     return hasUpstreamBaseURLVersionMismatch(channel.default_base_url, value)
       ? t('import.connection.urlVersionWarning')
       : undefined
@@ -216,6 +224,11 @@ export function ImportConnectionSection({
 
   return (
     <div {...stylex.props(styles.root)}>
+      {channel?.channel_id === 'multi_protocol' && (
+        <p {...stylex.props(styles.disabledReason)}>
+          {t('import.presets.followClientProtocolHelp')}
+        </p>
+      )}
       <div {...stylex.props(styles.fields)}>
         <div {...stylex.props(styles.minWidth)}>
           <TextInput

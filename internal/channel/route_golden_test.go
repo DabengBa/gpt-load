@@ -22,7 +22,7 @@ func TestBuiltInRouteGolden(t *testing.T) {
 		// New presets have explicit capability assertions in TestU006PresetCapabilities;
 		// retain this historical snapshot for the original channels.
 		switch descriptor.ID {
-		case Cerebras, Mistral, Nebius, Parasail, Wafer, HuggingFace, Cohere, OpenCodeGo, OpenCodeZen:
+		case Cerebras, Mistral, Nebius, Parasail, Wafer, HuggingFace, Cohere, OpenCodeGo, OpenCodeZen, MultiProtocol:
 			continue
 		}
 		definition, ok := registry.lookup(descriptor.ID)

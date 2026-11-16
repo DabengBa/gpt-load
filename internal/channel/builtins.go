@@ -39,5 +39,6 @@ func builtInModules() []spec.Module {
 		modules.CLIProxyAPI(),
 		modules.Sub2API(),
 		modules.OpenAICompatible(),
+		modules.MultiProtocol(),
 	}
 }

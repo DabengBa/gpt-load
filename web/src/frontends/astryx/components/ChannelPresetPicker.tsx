@@ -9,8 +9,15 @@ import { useT } from '@app/app/i18n'
 import { ChannelIcon } from './ChannelIcon'
 import { InlineNotice } from './InlineNotice'
 
-const MAX_FEATURED_CHANNELS = 4
-const FEATURED_CHANNEL_IDS = ['openai', 'anthropic', 'gemini', 'openai_compatible']
+const MAX_FEATURED_CHANNELS = 5
+const FEATURED_CHANNEL_IDS = [
+  'openai_compatible',
+  'openai',
+  'anthropic',
+  'gemini',
+  'multi_protocol',
+]
+const SPECIAL_CHANNEL_IDS = ['azure_openai', 'aws_bedrock', 'google_vertex']
 
 interface ChannelMatch {
   channel: ChannelDto
@@ -227,19 +234,37 @@ export function ChannelPresetPicker({
       (channel): channel is ChannelDto => channel !== undefined,
     ),
     ...channels.filter((channel) => !preferredIDs.has(channel.channel_id)),
-  ].slice(0, MAX_FEATURED_CHANNELS)
+  ].slice(0, byID.has('multi_protocol') ? MAX_FEATURED_CHANNELS : MAX_FEATURED_CHANNELS - 1)
   const activeChannels = channels
   const featuredChannelIDs = new Set(featuredChannels.map((channel) => channel.channel_id))
   const extraChannel =
     selectedChannel && !featuredChannelIDs.has(selectedChannel.channel_id) ? selectedChannel : null
-  const otherChannels = activeChannels.filter(
-    (channel) => !featuredChannelIDs.has(channel.channel_id),
-  )
+  const specialIDs = new Set(SPECIAL_CHANNEL_IDS)
+  const otherChannels = [
+    ...SPECIAL_CHANNEL_IDS.map((id) => byID.get(id)).filter(
+      (channel): channel is ChannelDto =>
+        channel !== undefined && !featuredChannelIDs.has(channel.channel_id),
+    ),
+    ...activeChannels.filter(
+      (channel) =>
+        !featuredChannelIDs.has(channel.channel_id) && !specialIDs.has(channel.channel_id),
+    ),
+  ]
+
+  function channelName(channel: ChannelDto): string {
+    return channel.channel_id === 'multi_protocol'
+      ? t('import.presets.followClientProtocol')
+      : channel.name
+  }
 
   function matchChannel(channel: ChannelDto, normalizedQuery: string): ChannelMatch | null {
-    const name = channel.name.toLocaleLowerCase()
+    const name = channelName(channel).toLocaleLowerCase()
     if (name.startsWith(normalizedQuery)) return { channel, rank: 100, reason: '' }
     if (name.includes(normalizedQuery)) return { channel, rank: 80, reason: '' }
+    const originalName = channel.name.toLocaleLowerCase()
+    if (originalName.startsWith(normalizedQuery))
+      return { channel, rank: 100, reason: channel.name }
+    if (originalName.includes(normalizedQuery)) return { channel, rank: 80, reason: channel.name }
     const id = channel.channel_id
     if (id.startsWith(normalizedQuery)) return { channel, rank: 70, reason: id }
     if (id.includes(normalizedQuery)) return { channel, rank: 60, reason: id }
@@ -348,7 +373,7 @@ export function ChannelPresetPicker({
             <span {...stylex.props(styles.current)}>
               <span>{t('import.presets.current')}</span>
               <ChannelIcon icon={selectedChannel.icon} mark={selectedChannel.mark} />
-              <span {...stylex.props(styles.currentName)}>{selectedChannel.name}</span>
+              <span {...stylex.props(styles.currentName)}>{channelName(selectedChannel)}</span>
             </span>
           )}
         </div>
@@ -383,7 +408,7 @@ export function ChannelPresetPicker({
                   onClick={() => choose(channel)}
                 >
                   <ChannelIcon icon={channel.icon} mark={channel.mark} />
-                  <span>{channel.name}</span>
+                  <span>{channelName(channel)}</span>
                 </button>
               ))}
 
@@ -454,7 +479,7 @@ export function ChannelPresetPicker({
                                 <span {...stylex.props(styles.optionName)}>
                                   {compatibleAlternative
                                     ? t('import.presets.useCompatible')
-                                    : highlightSegments(match.channel.name, query).map(
+                                    : highlightSegments(channelName(match.channel), query).map(
                                         (segment, segIndex) =>
                                           segment.matched ? (
                                             <mark key={segIndex}>{segment.text}</mark>
@@ -493,7 +518,9 @@ export function ChannelPresetPicker({
                         {extraChannel && (
                           <ChannelIcon icon={extraChannel.icon} mark={extraChannel.mark} />
                         )}
-                        <span>{extraChannel?.name ?? t('import.presets.more')}</span>
+                        <span>
+                          {extraChannel ? channelName(extraChannel) : t('import.presets.more')}
+                        </span>
                         <ChevronDown
                           size={13}
                           aria-hidden="true"
