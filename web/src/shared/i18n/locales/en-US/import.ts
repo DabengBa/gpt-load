@@ -13,6 +13,9 @@ export default {
       noMatches: 'No channels match',
       useCompatible: 'Use OpenAI-compatible channel',
       compatibleHelp: 'Use this option only if the provider supports the OpenAI API.',
+      followClientProtocol: 'Follow client protocol',
+      followClientProtocolHelp:
+        'For declared operations, the next hop follows the client protocol. The final provider protocol depends on the gateway. The default health test uses Chat; a single result only represents the operation performed.',
       loading: 'Loading channels…',
       loadFailed: 'Unable to load channels',
       channelRequired: 'Select a channel',
@@ -48,6 +51,8 @@ export default {
         checking: 'Checking the previous operation',
         checkingDescription: 'Use the status action above to check the result',
         readyDescription: 'Creates “{name}”; the name can be changed later',
+        autoNameDescription:
+          'The name is generated from the upstream hostname or channel name; a suffix may be added if needed.',
         unnamedGroup: 'Unnamed Group',
       },
     },
@@ -92,11 +97,15 @@ export default {
     },
     connection: {
       name: 'Group name',
-      namePlaceholder: 'Leave blank to use the channel default',
+      namePlaceholder: 'Leave blank to generate a name automatically',
       url: 'Upstream base URL',
       urlDescription: 'Enter the Base URL required by the upstream service',
       compatibleUrlDescription:
         'Enter the complete API prefix, for example https://api.example.com/v1',
+      multiProtocolUrlDescription:
+        'Enter the gateway root or deployment prefix, for example https://gateway.example.com. Protocol paths are appended automatically.',
+      multiProtocolVersionWarning:
+        'Protocol paths are appended to this base URL. If this is an API version path rather than a deployment prefix, requests may contain /v1/v1 or /v1beta/v1beta. Verify the gateway configuration.',
       gptLoadUrlDescription:
         'Enter the GPT-Load gateway root or deployment prefix, for example https://gpt-load.example.com. Do not include standard protocol paths such as /v1 or /v1beta.',
       newApiUrlDescription:

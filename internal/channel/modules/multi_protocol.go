@@ -1,0 +1,48 @@
+package modules
+
+import (
+	"gpt-load/internal/channel/spec"
+	"gpt-load/internal/execution"
+	"gpt-load/internal/protocol"
+)
+
+func MultiProtocol() spec.Module {
+	return spec.Module{
+		Definition: spec.Definition{
+			ID: spec.MultiProtocol, Name: "Multi-Protocol", Mark: "MP", Icon: "multi-protocol",
+			Description: "Gateway using the client protocol for the next hop",
+			Connection:  spec.Connection{CredentialInput: "batch_text"},
+			Params: []spec.Field{{
+				Key: "base_url", Label: "Base URL", InputKind: spec.InputURL,
+				Required: true, Normalizer: spec.NormalizeBaseURL,
+			}},
+			Credentials: []spec.Field{{
+				Key: "api_key", Label: "API Key", InputKind: spec.InputSecret,
+				Required: true, Sensitive: true, Normalizer: spec.NormalizeNonEmpty,
+			}},
+			Provider: spec.ProviderBinding{
+				ProbeContract:  spec.ProbeContract{Protocol: protocol.OpenAICompletions, MinOutputTokens: probeMinOutputTokens},
+				ProviderKind:   spec.ProviderMultiProtocolGateway,
+				EndpointPolicy: spec.EndpointRequiredBaseURL,
+			},
+			Routes: []spec.Route{
+				spec.NewRoute(protocol.GeminiEmbeddings, execution.OperationEmbeddingsCreate, execution.RouteNative),
+				spec.NewRoute(protocol.GeminiEmbeddings, execution.OperationProbe, execution.RouteNative),
+				spec.NewRoute(protocol.Rerank, execution.OperationRerank, execution.RouteNative),
+				spec.NewRoute(protocol.OpenAICompletions, execution.OperationChatCompletion, execution.RouteNative),
+				spec.NewRoute(protocol.OpenAICompletions, execution.OperationListModels, execution.RouteNative),
+				spec.NewRoute(protocol.OpenAICompletions, execution.OperationProbe, execution.RouteNative),
+				spec.NewResponsesCreateRoute(execution.RouteNative, spec.ResponsesStoreHandlingUpstreamManaged),
+				spec.NewRoute(protocol.OpenAIResponses, execution.OperationProbe, execution.RouteNative),
+				spec.NewRoute(protocol.OpenAIResponses, execution.OperationResponsesCompact, execution.RouteNative),
+				spec.NewRoute(protocol.OpenAIImages, execution.OperationImagesGenerate, execution.RouteNative),
+				spec.NewRoute(protocol.OpenAIImages, execution.OperationImagesEdit, execution.RouteNative),
+				spec.NewRoute(protocol.OpenAIEmbeddings, execution.OperationEmbeddingsCreate, execution.RouteNative),
+				spec.NewRoute(protocol.Anthropic, execution.OperationChatCompletion, execution.RouteNative),
+				spec.NewRoute(protocol.Anthropic, execution.OperationProbe, execution.RouteNative),
+				spec.NewRoute(protocol.Gemini, execution.OperationChatCompletion, execution.RouteNative),
+				spec.NewRoute(protocol.Gemini, execution.OperationProbe, execution.RouteNative),
+			},
+		},
+	}
+}

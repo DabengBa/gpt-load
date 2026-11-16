@@ -40,6 +40,7 @@ func TestProbeContractDeclaresSingleGenerativeProtocol(t *testing.T) {
 		OpenCodeZen:      protocol.OpenAICompletions,
 		GPTLoad:          protocol.OpenAICompletions,
 		NewAPI:           protocol.OpenAICompletions,
+		MultiProtocol:    protocol.OpenAICompletions,
 		CLIProxyAPI:      protocol.OpenAICompletions,
 		Sub2API:          protocol.OpenAICompletions,
 		OpenAICompatible: protocol.OpenAICompletions,

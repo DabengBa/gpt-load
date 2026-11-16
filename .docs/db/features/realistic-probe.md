@@ -27,6 +27,10 @@ actual-request workspace.
   uses a code-owned protocol preset. Supported data protocols retain their own
   probe templates. The group's matching parameter overrides and model reasoning
   setting are applied to model probes.
+- For the Follow client protocol channel, the default liveness test uses Chat
+  Completions. A result applies to the operation actually tested, not all
+  protocols or the final provider behind the gateway. See the
+  [channel contract](../../tech/multi-protocol-channel.md).
 - A single result puts the outcome, next step and scope first, with technical
   details expandable. A request-log ID is shown and linked when available;
   logging is best effort, so an unavailable ID does not prove no request was

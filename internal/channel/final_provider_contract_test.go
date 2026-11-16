@@ -42,6 +42,7 @@ func TestFinalRegistryContainsOnlyApprovedChannels(t *testing.T) {
 		CLIProxyAPI,
 		Sub2API,
 		OpenAICompatible,
+		MultiProtocol,
 	}
 	if got := descriptorIDs(registry.List()); !reflect.DeepEqual(got, want) {
 		t.Fatalf("List() IDs = %v, want %v", got, want)

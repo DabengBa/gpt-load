@@ -430,7 +430,11 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
   const channelStepSummary = (() => {
     if (visibleParamError) return visibleParamError
     if (!selectedChannel) return ''
-    return t('import.steps.channel.summary', { channel: selectedChannel.name })
+    const channel =
+      selectedChannel.channel_id === 'multi_protocol'
+        ? `${t('import.presets.followClientProtocol')} (${selectedChannel.name})`
+        : selectedChannel.name
+    return t('import.steps.channel.summary', { channel })
   })()
   const credentialStepState: ImportStepState =
     invalidCredential || credentialValidation !== null
@@ -465,8 +469,7 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     if (credentialCount === 0) return t('import.steps.models.availableAfterCredentials')
     return t('import.steps.models.optionalSummary')
   })()
-  const resolvedGroupName =
-    draft.name.trim() || selectedChannel?.name || t('import.steps.create.unnamedGroup')
+
   const createStatusTitle = mutationPending
     ? t('import.steps.create.creating')
     : payloadLocked
@@ -480,7 +483,9 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
       ? t('import.steps.create.checkingDescription')
       : !canCreate
         ? submitBlockedReason
-        : t('import.steps.create.readyDescription', { name: resolvedGroupName })
+        : draft.name.trim()
+          ? t('import.steps.create.readyDescription', { name: draft.name.trim() })
+          : t('import.steps.create.autoNameDescription')
   const discoveryError = discoveryErrorKey ? t(discoveryErrorKey) : ''
 
   const aliasEditorLabels: ModelAliasEditorLabels = {
@@ -1007,13 +1012,14 @@ export function NewGroupImport({ initialDraft }: { initialDraft?: ImportDraft | 
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the signature
   }, [discoveryInvalidationSignature])
 
-  // Classic watch(allChannels, immediate): adopt the first channel as the
-  // default for a fresh draft — and fold it into the baseline so `dirty` stays
-  // false until the user edits.
+  // Only untouched fresh drafts adopt a default; older servers may not offer
+  // the compatible channel, in which case retain the previous fallback.
   if (allChannelsStable.length > 0 && shouldApplyDefaultChannel) {
     setShouldApplyDefaultChannel(false)
     if (JSON.stringify(draft) === baselineJson) {
-      const channel = allChannelsStable[0]
+      const channel =
+        allChannelsStable.find(({ channel_id }) => channel_id === 'openai_compatible') ??
+        allChannelsStable[0]
       const params = initialChannelParams(channel)
       setDraft((current) => ({
         ...current,

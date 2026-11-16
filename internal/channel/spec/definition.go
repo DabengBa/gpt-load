@@ -21,6 +21,7 @@ const (
 	GoogleVertex     ID = "google_vertex"
 	GPTLoad          ID = "gpt_load"
 	NewAPI           ID = "newapi"
+	MultiProtocol    ID = "multi_protocol"
 	CLIProxyAPI      ID = "cliproxyapi"
 	Sub2API          ID = "sub2api"
 	OpenAICompatible ID = "openai_compatible"

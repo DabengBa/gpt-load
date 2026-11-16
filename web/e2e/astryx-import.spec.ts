@@ -107,6 +107,26 @@ const PICKER_CHANNELS = [
   ],
 }))
 
+const SIMPLIFIED_CHANNELS = [
+  ...PICKER_CHANNELS,
+  ...[
+    ['multi_protocol', 'Multi-Protocol'],
+    ['azure_openai', 'Azure OpenAI'],
+    ['aws_bedrock', 'AWS Bedrock'],
+    ['google_vertex', 'Google Vertex'],
+  ].map(([channel_id, name]) => ({
+    ...PICKER_CHANNELS[0]!,
+    channel_id,
+    name,
+    ...(channel_id === 'multi_protocol'
+      ? {
+          default_base_url: '',
+          param_fields: [{ ...PICKER_CHANNELS[0]!.param_fields[0]!, required: true }],
+        }
+      : {}),
+  })),
+]
+
 const GROUP_OPTIONS = [
   {
     id: 7,
@@ -256,6 +276,246 @@ async function mockImportApi(
   })
   return requests
 }
+
+for (const {
+  locale,
+  width,
+  label,
+  explanation,
+  urlHelp,
+  createLabel,
+  moreLabel,
+  searchLabel,
+  autoName,
+  warning,
+  explicitName,
+} of [
+  {
+    locale: 'en-US',
+    width: 1440,
+    label: 'Follow client protocol',
+    explanation:
+      'For declared operations, the next hop follows the client protocol. The final provider protocol depends on the gateway. The default health test uses Chat; a single result only represents the operation performed.',
+    urlHelp:
+      'Enter the gateway root or deployment prefix, for example https://gateway.example.com. Protocol paths are appended automatically.',
+    createLabel: 'Create Group',
+    moreLabel: 'Other channels',
+    searchLabel: 'Search channels',
+    autoName:
+      'The name is generated from the upstream hostname or channel name; a suffix may be added if needed.',
+    warning:
+      'Protocol paths are appended to this base URL. If this is an API version path rather than a deployment prefix, requests may contain /v1/v1 or /v1beta/v1beta. Verify the gateway configuration.',
+    explicitName: 'Creates “My Gateway”; the name can be changed later',
+  },
+  {
+    locale: 'zh-CN',
+    width: 390,
+    label: '随客户端协议',
+    explanation:
+      '对已声明的操作，下一跳随客户端协议；最终供应商协议取决于网关。默认测活使用 Chat，单次结果仅代表实际执行的操作。',
+    urlHelp: '填写网关根地址或部署前缀，例如 https://gateway.example.com；系统会自动追加协议路径',
+    createLabel: '创建分组',
+    moreLabel: '其他渠道',
+    searchLabel: '搜索渠道',
+    autoName: '名称由上游主机名或渠道名称自动生成；必要时会添加后缀。',
+    warning:
+      '系统会在此基础地址后追加协议路径。如果这不是部署前缀而是 API 版本路径，请求可能出现 /v1/v1 或 /v1beta/v1beta，请确认网关配置。',
+    explicitName: '将创建分组“My Gateway”，之后可随时改名',
+  },
+]) {
+  test(`simplified new channels and gateway boundary in ${locale}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.addInitScript((value) => localStorage.setItem('gpt-load.locale', value), locale)
+    const requests = await mockImportApi(page)
+    await page.route('**/api/channels', (route) =>
+      route.fulfill({
+        json: {
+          code: 0,
+          message: 'ok',
+          data: { items: SIMPLIFIED_CHANNELS, total: SIMPLIFIED_CHANNELS.length },
+        },
+      }),
+    )
+    await page.goto('/import?mode=new', { waitUntil: 'commit' })
+    await expect(
+      page.getByRole('button', { name: 'OpenAI Compatible', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true', { timeout: FIRST_PAINT })
+    for (const name of ['OpenAI', 'Anthropic', 'Gemini']) {
+      await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
+    }
+    await page.getByRole('button', { name: label, exact: true }).click()
+
+    await expect(page.getByText(explanation, { exact: true })).toBeVisible()
+    await expect(page.getByText(urlHelp, { exact: true })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width,
+    )
+    await page.locator('#channel-credentials').fill('fixture-key')
+    const address = page.locator('input[inputmode="url"]').last()
+    const create = page.getByRole('button', { name: createLabel, exact: true })
+    await expect(address).toHaveValue('')
+    await expect(address).toHaveAttribute('aria-required', 'true')
+    await expect(create).toBeDisabled()
+    expect(requests.createBodies).toHaveLength(0)
+    await address.fill('https://gateway.example.test/v1')
+    await expect(page.getByTestId('astryx-shell').getByText(warning, { exact: true })).toBeVisible()
+    await address.fill('https://gateway.example.test/team/v1/')
+    await expect(page.getByTestId('astryx-shell').getByText(warning, { exact: true })).toBeVisible()
+    await expect(create).toBeEnabled()
+    await address.fill('https://gateway.example.test/team/v1beta')
+    await expect(page.getByTestId('astryx-shell').getByText(warning, { exact: true })).toBeVisible()
+    await address.fill('https://gateway.example.test/team')
+    await expect(page.getByTestId('astryx-shell').getByText(warning, { exact: true })).toHaveCount(
+      0,
+    )
+    await address.fill('https://gateway.example.test/v1/team')
+    await expect(page.getByTestId('astryx-shell').getByText(warning, { exact: true })).toHaveCount(
+      0,
+    )
+    await address.fill('https://gateway.example.test')
+    await expect(page.getByText(autoName, { exact: true })).toBeVisible()
+    await expect(page.getByText(`${label} (Multi-Protocol)`, { exact: true })).toBeVisible()
+    await page.getByLabel(locale === 'zh-CN' ? '分组名称' : 'Group name').fill('My Gateway')
+    await expect(page.getByText(explicitName, { exact: true })).toBeVisible()
+    await page.getByLabel(locale === 'zh-CN' ? '分组名称' : 'Group name').clear()
+    await address.fill('https://gateway.example.test/team/v1/')
+
+    await create.click()
+    await expect.poll(() => requests.createBodies.length).toBe(1)
+    expect(requests.createBodies[0]).toMatchObject({
+      channel_id: 'multi_protocol',
+      params: { base_url: 'https://gateway.example.test/team/v1/' },
+      credential: 'fixture-key',
+    })
+    expect(requests.createBodies[0]).not.toHaveProperty('name')
+  })
+
+  test(`gateway original name search in ${locale}`, async ({ page }) => {
+    await page.addInitScript((value) => localStorage.setItem('gpt-load.locale', value), locale)
+    await mockImportApi(page)
+    await page.route('**/api/channels', (route) =>
+      route.fulfill({
+        json: {
+          code: 0,
+          message: 'ok',
+          data: { items: SIMPLIFIED_CHANNELS, total: SIMPLIFIED_CHANNELS.length },
+        },
+      }),
+    )
+    await page.goto('/import?mode=new', { waitUntil: 'commit' })
+    await page.getByRole('button', { name: moreLabel, exact: true }).click({ timeout: FIRST_PAINT })
+    const search = page.getByRole('combobox', { name: new RegExp(searchLabel) })
+    await search.fill('Multi-Protocol')
+    await expect(page.getByRole('option').filter({ hasText: label })).toBeVisible()
+    await search.press('Enter')
+    await expect(page.getByRole('button', { name: label, exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+}
+
+test('special authentication and legacy presets remain reachable with keyboard search', async ({
+  page,
+}) => {
+  await mockImportApi(page)
+  await page.route('**/api/channels', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: { items: SIMPLIFIED_CHANNELS, total: SIMPLIFIED_CHANNELS.length },
+      },
+    }),
+  )
+  await page.goto('/import?mode=new', { waitUntil: 'commit' })
+  await page
+    .getByRole('button', { name: 'Other channels', exact: true })
+    .click({ timeout: FIRST_PAINT })
+  await expect(
+    page
+      .getByRole('option')
+      .locator('span')
+      .filter({ hasText: /^(Azure OpenAI|AWS Bedrock|Google Vertex)$/ }),
+  ).toHaveText(['Azure OpenAI', 'AWS Bedrock', 'Google Vertex'])
+  await page.keyboard.press('Escape')
+  for (const name of ['Azure OpenAI', 'AWS Bedrock', 'Google Vertex', 'DeepSeek']) {
+    const trigger = page
+      .getByRole('button', {
+        name: /Other channels|Azure OpenAI|AWS Bedrock|Google Vertex|DeepSeek/,
+      })
+      .last()
+    await trigger.click({ timeout: FIRST_PAINT })
+    const search = page.getByRole('combobox', { name: /Search channels/ })
+    await search.fill(name)
+    await search.press('Enter')
+    await expect(page.getByRole('button', { name, exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  }
+})
+
+test('fresh compatible default submits its own address and key', async ({ page }) => {
+  const requests = await mockImportApi(page)
+  await page.route('**/api/channels', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: { items: SIMPLIFIED_CHANNELS, total: SIMPLIFIED_CHANNELS.length },
+      },
+    }),
+  )
+  await page.goto('/import?mode=new', { waitUntil: 'commit' })
+  await expect(
+    page.getByRole('button', { name: 'OpenAI Compatible', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true', { timeout: FIRST_PAINT })
+  await page
+    .getByRole('textbox', { name: /^Upstream base URL/ })
+    .fill('https://relay.example.test/v1')
+  await page.locator('#channel-credentials').fill('fixture-key')
+  await page.getByRole('button', { name: 'Create Group', exact: true }).click()
+  await expect.poll(() => requests.createBodies.length).toBe(1)
+  expect(requests.createBodies[0]).toMatchObject({
+    channel_id: 'openai_compatible',
+    params: { base_url: 'https://relay.example.test/v1' },
+    credential: 'fixture-key',
+  })
+})
+
+test('failed channel loading blocks creation and retry recovers the default', async ({ page }) => {
+  const requests = await mockImportApi(page)
+  let attempts = 0
+  let releaseFirstRequest: () => void = () => {}
+  const waitForRelease = new Promise<void>((resolve) => {
+    releaseFirstRequest = resolve
+  })
+  await page.route('**/api/channels', async (route) => {
+    attempts += 1
+    if (attempts === 1) await waitForRelease
+    return attempts === 1
+      ? route.fulfill({ status: 500, json: { code: 500, message: 'failure', data: null } })
+      : route.fulfill({
+          json: {
+            code: 0,
+            message: 'ok',
+            data: { items: SIMPLIFIED_CHANNELS, total: SIMPLIFIED_CHANNELS.length },
+          },
+        })
+  })
+  await page.goto('/import?mode=new', { waitUntil: 'commit' })
+  await expect(page.getByText('Loading channels…')).toBeVisible({ timeout: FIRST_PAINT })
+  await expect(page.getByRole('button', { name: 'Create Group', exact: true })).toBeDisabled()
+  releaseFirstRequest()
+  await expect(page.getByText('Unable to load channels')).toBeVisible({ timeout: FIRST_PAINT })
+  await expect(page.getByRole('button', { name: 'Create Group', exact: true })).toBeDisabled()
+  expect(requests.createBodies).toHaveLength(0)
+  await page.getByRole('button', { name: 'Retry', exact: true }).click()
+  await expect(
+    page.getByRole('button', { name: 'OpenAI Compatible', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true')
+})
 
 for (const width of [390, 1440]) {
   test(`import tasks have distinct responsive surfaces at ${width}px`, async ({
@@ -742,11 +1002,24 @@ test('a 401 captures the draft to sessionStorage and re-login restores it', asyn
   context,
 }) => {
   await mockImportApi(page, { createStatus: 401 })
+  await page.route('**/api/channels', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        message: 'ok',
+        data: { items: SIMPLIFIED_CHANNELS, total: SIMPLIFIED_CHANNELS.length },
+      },
+    }),
+  )
   await page.goto('/import', { waitUntil: 'commit' })
 
   await expect(page.getByRole('heading', { name: 'Import channel credentials' })).toBeVisible({
     timeout: FIRST_PAINT,
   })
+  await page.getByRole('button', { name: 'OpenAI', exact: true }).click()
+  await page
+    .getByRole('textbox', { name: /^Upstream base URL/ })
+    .fill('https://legacy.example.test/v1')
   await page.locator('#channel-credentials').fill('sk-rescue-1')
   await page.getByRole('button', { name: 'Create Group' }).click()
 
@@ -771,6 +1044,13 @@ test('a 401 captures the draft to sessionStorage and re-login restores it', asyn
   await expect(page.locator('#channel-credentials')).toHaveValue(/sk-rescue-1/, {
     timeout: 15_000,
   })
+  await expect(page.getByRole('button', { name: 'OpenAI', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByRole('textbox', { name: /^Upstream base URL/ })).toHaveValue(
+    'https://legacy.example.test/v1',
+  )
   // The draft is single-consumption: sessionStorage no longer holds it.
   await expect
     .poll(() => page.evaluate(() => window.sessionStorage.getItem('gpt-load.import-reauth-draft')))

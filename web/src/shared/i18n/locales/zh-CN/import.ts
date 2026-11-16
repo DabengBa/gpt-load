@@ -13,6 +13,9 @@ export default {
       noMatches: '没有匹配的渠道',
       useCompatible: '使用 OpenAI 兼容渠道',
       compatibleHelp: '仅当供应商支持 OpenAI API 时，才使用此选项。',
+      followClientProtocol: '随客户端协议',
+      followClientProtocolHelp:
+        '对已声明的操作，下一跳随客户端协议；最终供应商协议取决于网关。默认测活使用 Chat，单次结果仅代表实际执行的操作。',
       loading: '正在加载渠道…',
       loadFailed: '无法加载渠道列表',
       channelRequired: '请选择渠道',
@@ -48,6 +51,7 @@ export default {
         checking: '正在确认上一次操作',
         checkingDescription: '请使用上方状态入口检查结果',
         readyDescription: '将创建分组“{name}”，之后可随时改名',
+        autoNameDescription: '名称由上游主机名或渠道名称自动生成；必要时会添加后缀。',
         unnamedGroup: '未命名分组',
       },
     },
@@ -85,10 +89,14 @@ export default {
     },
     connection: {
       name: '分组名称',
-      namePlaceholder: '留空则使用渠道默认名称',
+      namePlaceholder: '留空则自动生成名称',
       url: '上游基础地址',
       urlDescription: '请按上游服务要求填写 Base URL',
       compatibleUrlDescription: '填写完整 API 前缀，例如 https://api.example.com/v1',
+      multiProtocolUrlDescription:
+        '填写网关根地址或部署前缀，例如 https://gateway.example.com；系统会自动追加协议路径',
+      multiProtocolVersionWarning:
+        '系统会在此基础地址后追加协议路径。如果这不是部署前缀而是 API 版本路径，请求可能出现 /v1/v1 或 /v1beta/v1beta，请确认网关配置。',
       gptLoadUrlDescription:
         '填写 GPT-Load 网关根地址或部署前缀，例如 https://gpt-load.example.com；不要填写 /v1 或 /v1beta 等标准协议路径',
       newApiUrlDescription:
