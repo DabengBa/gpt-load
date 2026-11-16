@@ -95,7 +95,7 @@ opens at the relevant place instead of requiring a second search.
   priorities, but do not display calculated distribution percentages. An
   unconfigured weight or priority displays its effective default of 1;
   explicitly configured values, including weight 0, remain visible.
-- Group maintenance owns group and model changes; request logs own filtering,
-  detail inspection, and historical display.
+- Group maintenance owns group and model changes; [request-log filtering](feature.request-log-filtering)
+  owns filtering, while request logs own detail inspection and historical display.
 - The feature does not change routing eligibility, log data, group lifecycle,
   permissions, or persistence contracts.

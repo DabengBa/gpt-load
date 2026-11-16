@@ -164,6 +164,19 @@ func applyNullableRange[T int | int64](
 }
 
 func applyAttemptFilters(query *gorm.DB, input ListQuery) *gorm.DB {
+	conditions, arguments := attemptFilterConditions(input)
+	if len(conditions) == 0 {
+		return query
+	}
+	statement := `EXISTS (
+		SELECT 1 FROM request_log_attempts AS attempt
+		WHERE attempt.request_id = request_logs.id AND ` +
+		strings.Join(conditions, " AND ") + `
+	)`
+	return query.Where(statement, arguments...)
+}
+
+func attemptFilterConditions(input ListQuery) ([]string, []any) {
 	conditions := make([]string, 0, 8)
 	arguments := make([]any, 0, 8)
 	if input.GroupID != nil {
@@ -194,15 +207,7 @@ func applyAttemptFilters(query *gorm.DB, input ListQuery) *gorm.DB {
 		conditions = append(conditions, "attempt.error_code = ?")
 		arguments = append(arguments, input.AttemptErrorCode)
 	}
-	if len(conditions) == 0 {
-		return query
-	}
-	statement := `EXISTS (
-		SELECT 1 FROM request_log_attempts AS attempt
-		WHERE attempt.request_id = request_logs.id AND ` +
-		strings.Join(conditions, " AND ") + `
-	)`
-	return query.Where(statement, arguments...)
+	return conditions, arguments
 }
 
 // Get returns one request with all retry attempts and its frozen pricing receipt.

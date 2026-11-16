@@ -122,6 +122,7 @@ func (s *Server) HTTPModule() httproute.Module {
 			controlRoute("control.debug-captures.detail", http.MethodGet, "/debug-captures/:capture_id", s.handleGetDebugCapture),
 			controlRoute("control.debug-captures.download", http.MethodGet, "/debug-captures/:capture_id/download", s.handleDownloadDebugCapture),
 			controlRoute("control.logs.list", http.MethodGet, "/logs", s.handleListRequestLogs),
+			controlRoute("control.logs.facets", http.MethodGet, "/logs/facets", s.handleRequestLogFacets),
 			controlRoute("control.logs.get", http.MethodGet, "/logs/:request_id", s.handleGetRequestLog),
 			controlRoute("control.usage", http.MethodGet, "/usage", s.handleUsage),
 			controlRoute("control.route.inspect", http.MethodPost, "/route/inspect", s.handleRouteInspect),

@@ -10,7 +10,9 @@ import { ListFilter, X } from 'lucide-react'
 import { useMemo, type FormEvent, type JSX } from 'react'
 
 import type { ChannelDto } from '@shared/control/resources/channels'
-import type { AccessKeyOptionDto, GroupOptionDto } from '@shared/control/types'
+import type { AccessKeyOptionDto } from '@shared/control/types'
+import type { RequestLogFacetsDto } from '@shared/control/resources/request-logs'
+import { isValidMonitorText } from '@shared/domain/monitor/filter-validation'
 import {
   requestLogStatuses,
   type LogFilterDraft,
@@ -235,10 +237,10 @@ export interface LogsFilterFormProps {
   draft: LogFilterDraft
   appliedDraft: LogFilterDraft
   errors: LogFilterErrors
-  groups: GroupOptionDto[]
+  facets: RequestLogFacetsDto | undefined
   channels: ChannelDto[]
   accessKeys: AccessKeyOptionDto[]
-  groupsFailed: boolean
+  facetsFailed: boolean
   channelsFailed: boolean
   accessKeysFailed: boolean
   appliedChips: AppliedChip[]
@@ -246,6 +248,7 @@ export interface LogsFilterFormProps {
   advancedOpen: boolean
   onAdvancedOpenChange: (open: boolean) => void
   onUpdateField: (field: keyof LogFilterDraft, value: string) => void
+  onApplyFacet: (field: 'group_id' | 'client_model', value: string) => void
   onRemoveFilter: (key: string) => void
   onApply: () => void
   onReset: () => void
@@ -272,10 +275,10 @@ export function LogsFilterForm({
   draft,
   appliedDraft,
   errors,
-  groups,
+  facets,
   channels,
   accessKeys,
-  groupsFailed,
+  facetsFailed,
   channelsFailed,
   accessKeysFailed,
   appliedChips,
@@ -283,6 +286,7 @@ export function LogsFilterForm({
   advancedOpen,
   onAdvancedOpenChange,
   onUpdateField,
+  onApplyFacet,
   onRemoveFilter,
   onApply,
   onReset,
@@ -295,22 +299,23 @@ export function LogsFilterForm({
   )
 
   function groupOptions() {
-    return [
+    const options = [
       { value: '', label: t('monitor.logs.filters.anyGroup') },
-      ...groups.map((group) => ({
+      ...(facets?.groups ?? []).map((group) => ({
         value: String(group.id),
-        label: group.name,
+        label: group.name || `#${group.id}`,
       })),
     ]
+    if (draft.group_id && !options.some((option) => option.value === draft.group_id)) {
+      options.push({ value: draft.group_id, label: `#${draft.group_id}` })
+    }
+    return options
   }
 
-  // Client-model filtering keeps the classic semantics: options come from the
-  // declared models of the group catalog, exact match; a draft value absent
-  // from the catalog is appended so it stays selectable.
   function clientModelOptions() {
-    const models = [...new Set(groups.flatMap((group) => group.models))].sort((a, b) =>
-      a.localeCompare(b),
-    )
+    const models = (facets?.client_models ?? [])
+      .map(({ value }) => value)
+      .filter(isValidMonitorText)
     const options = [
       { value: '', label: t('monitor.logs.filters.anyClientModel') },
       ...models.map((model) => ({ value: model, label: model })),
@@ -378,8 +383,8 @@ export function LogsFilterForm({
                 emptySearchText={t('monitor.logs.filters.noMatches')}
                 options={groupOptions()}
                 value={draft.group_id}
-                onChange={(value) => onUpdateField('group_id', value)}
-                isDisabled={groupsFailed}
+                onChange={(value) => onApplyFacet('group_id', value)}
+                isDisabled={facetsFailed}
               />
             </span>
           )}
@@ -419,8 +424,8 @@ export function LogsFilterForm({
                 emptySearchText={t('monitor.logs.filters.noMatches')}
                 options={clientModelOptions()}
                 value={draft.client_model}
-                onChange={(value) => onUpdateField('client_model', value)}
-                isDisabled={groupsFailed}
+                onChange={(value) => onApplyFacet('client_model', value)}
+                isDisabled={facetsFailed}
                 status={
                   errors.client_model !== undefined && errors.client_model !== ''
                     ? { type: 'error' }
