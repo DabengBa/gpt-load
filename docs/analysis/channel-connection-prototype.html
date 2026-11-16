@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>连接方式 · 渠道精简逻辑原型</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f7f8fa;color:#202634;font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}button,input,select{font:inherit}button,input,select{min-height:44px}button,select{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #3155ef;outline-offset:2px}h1,h2,p{margin:0}h1{font-size:24px;line-height:1.35}h2{font-size:17px}.shell{max-width:1040px;margin:auto;padding:0 24px 48px}.top{border-bottom:1px solid #e4e7ee;background:#fff}.top .shell{padding-top:16px;padding-bottom:16px;display:flex;justify-content:space-between;gap:12px}.brand{font-weight:750}.muted,.hint{color:#536174}.hint{font-size:13px}.header{padding:28px 0 20px}.header p{margin-top:8px}.notice{background:#eff4ff;border:1px solid #ccd9f5;border-radius:8px;padding:14px 16px;margin-bottom:20px}.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}.stack{display:grid;gap:20px;min-width:0}.panel{background:#fff;border:1px solid #e4e7ee;border-radius:12px;min-width:0}.panel-head{padding:18px 20px 14px;border-bottom:1px solid #e4e7ee}.panel-head p{margin-top:3px}.body{padding:18px 20px}.field{display:grid;gap:6px;margin-bottom:16px;min-width:0}label{font-weight:650}input,select{width:100%;border:1px solid #9daabd;border-radius:7px;background:#fff;color:#202634;padding:9px 11px}input[readonly]{background:#f3f5f8;color:#536174}.inline{display:flex;align-items:end;gap:10px}.inline .field{flex:1;margin:0}button{border:1px solid #9daabd;border-radius:7px;background:#fff;color:#202634;font-weight:650;padding:9px 14px}button.primary{background:#3155d6;border-color:#3155d6;color:#fff}button:disabled{opacity:.55;cursor:not-allowed}.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:18px}.feedback{margin-top:12px;color:#4b596d;overflow-wrap:anywhere}.models{list-style:none;margin:12px 0 0;padding:0}.models li{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #e4e7ee;padding:9px 0;overflow-wrap:anywhere}.models button{min-height:36px;padding:5px 10px;flex:none}.preview,.result,.special{border:1px solid #dbe3ef;background:#f5f8fd;border-radius:8px;padding:12px 14px;margin-top:14px;overflow-wrap:anywhere}.preview code{display:block;margin-top:5px;overflow-wrap:anywhere}.result strong{display:block;margin-bottom:4px}.result p{color:#46546a}.special p+p{margin-top:8px}.side p+p{margin-top:14px}.side strong{display:block;margin-bottom:3px}.foot{margin-top:24px;font-size:12px;color:#536174}.error{color:#a12626}.badge{display:inline-block;color:#294fb2;background:#edf2ff;border-radius:5px;padding:2px 7px;font-size:12px;font-weight:650}.protocol{border-top:1px solid #e4e7ee;padding-top:14px}.wrap{overflow-wrap:anywhere}
+@media(max-width:760px){.layout{grid-template-columns:1fr}.shell{padding-left:16px;padding-right:16px}.header{padding-top:22px}}@media(max-width:440px){body{font-size:16px}.inline{align-items:stretch;flex-direction:column}.inline button,.actions button{width:100%}.top .shell{font-size:13px}.panel-head,.body{padding-left:16px;padding-right:16px}}
+</style>
+</head>
+<body>
+<header class="top"><div class="shell"><span class="brand">GPT-Load / 分组与连接</span><span class="muted">逻辑原型 · 拟议 / 模拟</span></div></header>
+<main class="shell">
+<div class="header"><h1>用连接方式代替供应商预设，能否精简渠道？</h1><p class="muted">从通用连接开始，保留需要专用鉴权或路由的连接类型。这里探索交互，不代表已实现。</p></div>
+<div class="notice"><strong>安全演示：</strong>不联网、不持久化，刷新即清空。密钥固定为假值，请勿输入真实密钥；不要在地址或模型名称中粘贴凭据。结果由你选择，不是服务运行或真实测活。</div>
+<div class="layout"><div class="stack">
+<section class="panel" aria-labelledby="config-title"><div class="panel-head"><h2 id="config-title">1. 配置连接 <span class="badge">拟议</span></h2><p class="hint">选择连接方式，而不是先选择供应商名称。</p></div><div class="body">
+<div class="field"><label for="type">连接类型</label><select id="type"><option value="compatible">OpenAI Compatible</option><option value="azure">Azure OpenAI</option><option value="bedrock">Amazon Bedrock</option><option value="vertex">Google Vertex AI</option><option value="anthropic">Anthropic</option><option value="gemini">Gemini</option></select><span class="hint">专用连接不因入口精简而被视为通用协议。</span></div>
+<div id="compatible-fields">
+<div class="field"><label for="url">Base URL（演示）</label><input id="url" type="url" value="https://example.invalid/v1" autocomplete="off" spellcheck="false" aria-describedby="url-help"><span class="hint" id="url-help">填写 http 或 https 基础地址，不含凭据、查询参数或片段；不要填写完整的 Chat 接口地址。</span></div>
+<div class="field"><label for="key">演示 Key</label><input id="key" value="demo-key-not-real" readonly autocomplete="off" aria-describedby="key-help"><span class="hint" id="key-help">固定假值，不接受真实 Key。</span></div>
+<div class="inline"><div class="field"><label for="model">模型名称</label><input id="model" placeholder="例如 example-model" autocomplete="off" spellcheck="false" maxlength="200"></div><button id="add" type="button">添加模型</button></div><p class="hint" style="margin-top:8px">手动添加一个或多个模型；不自动发现模型。</p><ul id="models" class="models" aria-label="已添加的模型"></ul><p id="model-note" class="feedback" aria-live="polite"></p>
+<div class="preview"><strong>请求地址示意</strong><code id="preview"></code><span class="hint">仅按 Base URL 拼接示意，实际地址及上游行为须另行确认；不会发出请求。</span></div>
+<div class="actions"><button id="save" class="primary" type="button">保存演示配置</button><span id="save-note" class="hint" aria-live="polite">尚未保存</span></div>
+</div>
+<div id="special" class="special" hidden></div>
+</div></section>
+<section class="panel" aria-labelledby="test-title"><div class="panel-head"><h2 id="test-title">2. 模拟单模型测试 <span class="badge">模拟</span></h2><p class="hint">先保存含模型的通用连接，再选模型和要体验的结果。</p></div><div class="body">
+<div id="test-controls"><div class="field"><label for="test-model">已保存的模型</label><select id="test-model"><option value="">请先保存模型</option></select></div><div class="field"><label for="outcome">选择要模拟的结果</label><select id="outcome"><option value="passed">模拟通过</option><option value="failed">模拟失败</option><option value="unknown">模拟无法判断</option></select><span class="hint">结果由此选项决定，不反映真实上游状态。</span></div><button id="run" type="button">运行模拟测试</button></div>
+<div id="result" class="result" role="status" aria-live="polite"><strong>尚未测试</strong><p>保存后可体验结果及其解释。</p></div>
+<p class="hint" style="margin-top:14px">现有 OpenAI Compatible 默认测活针对已保存的指定模型，使用非流式 Chat；这不是端到端测试。真实测试会请求上游，可能产生费用；一次通过不代表流式、工具调用、其他模型或其他协议可用。</p>
+</div></section>
+</div><aside class="stack side" aria-label="方案边界"><section class="panel"><div class="panel-head"><h2>精简不等于替换</h2></div><div class="body"><p><strong>已有组如何处理？</strong>拟议保留兼容，不自动改写或删除。现有组依赖 channel_id 以及认证、路由和计价；迁移须另行设计和验证。</p><p class="protocol"><strong>两个协议方向</strong>客户端协议是客户端到 GPT-Load 的请求格式；上游协议是 GPT-Load 到服务商的请求格式。两者可能不同或经过转换，不能因一种测试通过就假定另一种可用。</p><p class="protocol"><strong>其他连接</strong>各有鉴权、路由及探测契约；测试不一定是 Chat。本原型只展示边界，不模拟专用配置或测试。</p></div></section></aside></div>
+<p class="foot">本页为独立离线逻辑原型，所有示例均为虚构；不修改已有组，不代表生产功能。</p>
+</main>
+<script>
+'use strict';
+// State and rules are independent of DOM rendering and event handlers.
+const state = {type:'compatible', url:'https://example.invalid/v1', models:[], saved:null, dirty:true, selected:'', result:null};
+const specialDescriptions = {
+  azure:['Azure OpenAI','需要 Azure endpoint、部署和专用鉴权等；实际探测依其渠道契约。'],
+  bedrock:['Amazon Bedrock','需要 AWS 专用凭据、区域和模型路由；实际探测依其渠道契约。'],
+  vertex:['Google Vertex AI','需要 Google Cloud 专用鉴权、项目和区域等；实际探测依其渠道契约。'],
+  anthropic:['Anthropic','使用其专用协议与鉴权；实际探测依其渠道契约。'],
+  gemini:['Gemini','使用其专用协议与鉴权；实际探测依其渠道契约。']
+};
+function addressInfo(value){
+  try {
+    const url = new URL(value.trim());
+    if(!['http:','https:'].includes(url.protocol) || !url.hostname || url.username || url.password || url.search || url.hash || /[?#]/.test(value)) return {error:'请输入不含凭据、查询参数或片段的 http(s) Base URL。'};
+    if (/\/chat\/completions\/?$/i.test(url.pathname)) return {error:'请填写 Base URL，而不是完整的 Chat 接口地址。'};
+    return {preview:url.href.replace(/\/+$/, '') + '/chat/completions'};
+  } catch {return {error:'请输入有效的 http(s) Base URL。'};}
+}
+function validate(s){if(s.type!=='compatible') return '专用连接仅展示范围，不能在此保存或测试。'; const address=addressInfo(s.url); if(address.error) return address.error; if(!s.models.length) return '请先手动添加至少一个模型。'; return '';}
+function markChanged(s){s.dirty=true;if(s.result) s.result={title:'模拟结果已过期',detail:'配置已变化，请重新保存并运行模拟测试。'};}
+function simulate(outcome,model){
+  if(outcome==='passed') return {title:'模拟通过',detail:`仅模拟模型「${model}」的非流式 Chat 请求通过；不证明其他模型、流式、工具调用或其他协议可用，也不证明端到端可用。`};
+  if(outcome==='failed') return {title:'模拟失败',detail:'失败不等于协议不兼容；地址、凭据、模型、配额、网络或上游状态均可能导致失败，需结合真实错误排查。'};
+  return {title:'模拟无法判断',detail:'信息不足，不能判断连接或协议是否兼容；需检查真实错误、网络及上游状态后再试。'};
+}
+const $=id=>document.getElementById(id);
+function showResult(result){const title=document.createElement('strong'), detail=document.createElement('p');title.textContent=result.title;detail.textContent=result.detail;$('result').replaceChildren(title,detail);}
+function render(){
+  const compatible=state.type==='compatible'; $('compatible-fields').hidden=!compatible; $('special').hidden=compatible; $('test-controls').hidden=!compatible;
+  if(!compatible){const [name,detail]=specialDescriptions[state.type];$('special').replaceChildren();const title=document.createElement('strong'),p=document.createElement('p'),scope=document.createElement('p');title.textContent=name+'：仅展示范围';p.textContent=detail;scope.textContent='此处不模拟该连接的配置、保存或测试；其测试不能假定为 Chat，也不代表已有实现被改变。';$('special').append(title,p,scope);}
+  const info=addressInfo(state.url);$('preview').textContent=info.error || info.preview;
+  $('models').replaceChildren();state.models.forEach((name,index)=>{const li=document.createElement('li'),span=document.createElement('span'),button=document.createElement('button');span.textContent=name;button.type='button';button.textContent='移除';button.setAttribute('aria-label',`移除模型 ${name}`);button.addEventListener('click',()=>{state.models.splice(index,1);markChanged(state);$('model-note').textContent='模型已移除。';render();});li.append(span,button);$('models').append(li);});
+  $('save-note').textContent=state.saved && !state.dirty?'已保存在本页内存':'配置尚未保存';
+  const select=$('test-model');select.replaceChildren();const available=state.saved && !state.dirty && compatible?state.saved.models:[];
+  if(!available.length){const option=document.createElement('option');option.value='';option.textContent='请先保存模型';select.append(option);}else{available.forEach(name=>{const option=document.createElement('option');option.value=name;option.textContent=name;select.append(option);}); if(!available.includes(state.selected)) state.selected=available[0];select.value=state.selected;}
+  if(!compatible) showResult({title:'此连接未模拟测试',detail:'请查看上方专用连接范围；不要将通用 Chat 测试套用于其他协议。'});else showResult(state.result || {title:'尚未测试',detail:'保存后可体验结果及其解释。'});
+}
+$('type').addEventListener('change',e=>{state.type=e.target.value;markChanged(state);render();});
+$('url').addEventListener('input',e=>{state.url=e.target.value;markChanged(state);render();});
+$('add').addEventListener('click',()=>{const input=$('model'),name=input.value.trim();if(!name){$('model-note').textContent='请输入模型名称。';return;}if(state.models.includes(name)){$('model-note').textContent='该模型已添加。';return;}state.models.push(name);input.value='';$('model-note').textContent='模型已添加，请保存配置。';markChanged(state);render();});
+$('model').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('add').click();}});
+$('save').addEventListener('click',()=>{const error=validate(state);if(error){$('save-note').textContent=error;showResult({title:'无法保存',detail:error});return;}state.saved={url:state.url.trim(),models:[...state.models]};state.dirty=false;state.selected=state.saved.models[0];state.result={title:'已保存演示配置',detail:'请选择已保存模型及模拟结果。'};render();});
+$('test-model').addEventListener('change',e=>{state.selected=e.target.value;state.result={title:'模拟结果已过期',detail:'测试模型已变化，请重新运行模拟测试。'};render();});
+$('outcome').addEventListener('change',()=>{if(state.result && ['模拟通过','模拟失败','模拟无法判断'].includes(state.result.title)){state.result={title:'模拟结果已过期',detail:'选择的模拟结果已变化，请重新运行模拟测试。'};render();}});
+$('run').addEventListener('click',()=>{if(!state.saved||state.dirty||!state.selected){showResult({title:'无法测试',detail:'请先添加模型并保存当前配置，再运行模拟测试。'});return;}state.result=simulate($('outcome').value,state.selected);render();});
+render();
+</script>
+</body>
+</html>

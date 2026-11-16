@@ -15,24 +15,26 @@ case "$mode" in
   *) echo "未知发布模式: $mode" >&2; exit 2 ;;
 esac
 src=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-git check-ref-format --branch "$branch" >/dev/null
+[ "$branch" = dev ] || { echo '发布前同步仅支持 dev 分支，拒绝其他分支' >&2; exit 2; }
 
-# 构建上下文、验证脚本和切换脚本都取自目标提交：先把提交导出到临时目录，再由导出的
-# 副本执行。本地未提交的改动因此进不了镜像，也改不了验证与切换逻辑。
+# 正常入口必须先通过同步门禁；门禁从固定提交导出脚本并传入内部凭据，避免递归。
 if [ -z "${DEPLOY_COMMIT:-}" ]; then
-  git -C "$src" fetch -q origin "refs/heads/$branch"
-  commit=$(git -C "$src" rev-parse FETCH_HEAD)
-  sha=$(git -C "$src" rev-parse --short "$commit")
-  if [ "$mode" = --activate-only ] && [ "$commit" != "$expected" ]; then
-    echo '远端分支已变化，拒绝切换；请重新准备并演练目标提交' >&2
-    exit 1
-  fi
-  bundle=$(mktemp -d)
-  trap 'rm -rf "$bundle"' EXIT
-  (cd "$src" && git archive "$commit") | tar -x -C "$bundle"
-  echo "构建与验证使用提交 $commit 自带的脚本"
-  DEPLOY_COMMIT=$commit DEPLOY_SHA=$sha bash "$bundle/scripts/deploy.sh" "$@"
-  exit 0
+  case "$mode" in
+    all) exec python3 "$src/scripts/release-with-lm-detector.py" ;;
+    --prepare-only) exec python3 "$src/scripts/release-with-lm-detector.py" --prepare-only ;;
+    --activate-only) exec python3 "$src/scripts/release-with-lm-detector.py" --activate-only "$expected" ;;
+  esac
+fi
+# 环境变量不是公开入口：拒绝意外继承的 DEPLOY_COMMIT，只有门禁传递的管道才可进入。
+[[ "${DEPLOY_GATE_FD:-}" =~ ^[0-9]+$ ]] || { echo '禁止绕过发布前同步门禁' >&2; exit 1; }
+read -r gate_commit gate_sha <&"$DEPLOY_GATE_FD" || { echo '发布门禁凭据无效' >&2; exit 1; }
+exec {DEPLOY_GATE_FD}<&-
+[[ "$DEPLOY_COMMIT" =~ ^[0-9a-f]{40}$ && "${DEPLOY_SHA:-}" =~ ^[0-9a-f]{4,40}$ ]] &&
+  [ "$gate_commit" = "$DEPLOY_COMMIT" ] && [ "$gate_sha" = "$DEPLOY_SHA" ] || {
+  echo '发布门禁提交不匹配' >&2; exit 1
+}
+if [ "$mode" = --activate-only ] && [ "$DEPLOY_COMMIT" != "$expected" ]; then
+  echo '远端分支已变化，拒绝切换；请重新准备并演练目标提交' >&2; exit 1
 fi
 commit=$DEPLOY_COMMIT
 sha=$DEPLOY_SHA
@@ -186,7 +188,7 @@ esac
 REMOTE
 
 echo '公网健康检查:'
-public=$(curl -fsS --max-time 10 https://gptl.tanyaleoallen.cloud/health)
+public=$(curl -fsS --max-time 10 https://gptl.tanyaleoallen.online/health)
 echo "$public"
 case "$public" in
   *"\"version\":\"$version\""*) ;;

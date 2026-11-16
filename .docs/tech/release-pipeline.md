@@ -5,6 +5,7 @@ topic: release-pipeline
 code:
   paths:
     - scripts/deploy.sh
+    - scripts/release-with-lm-detector.py
     - scripts/verify-built-image.py
     - scripts/local-rehearsal.py
 ---
@@ -32,18 +33,24 @@ guarded remote script with an offline data archive taken at the stop.
 
 ## Stages
 
-`scripts/deploy.sh <branch>` is one command. `--prepare-only` stops after the
+`scripts/deploy.sh dev` is the release entry point. Before building or activating,
+it checks upstream lm-detector in a temporary clone, validates relevant SDK and
+data changes, creates or resumes a matching PR, waits for successful checks,
+and merges it into `dev`. Failures stop deployment. No change proceeds with the
+current remote `dev` commit. `--activate-only` refuses changed upstream data or
+a changed prepared commit. The GitHub merge API cannot atomically pin the base:
+post-merge parent verification can stop deployment but cannot undo a merge made
+against a concurrently advanced `dev`. Avoid concurrent merges during release.
+`--prepare-only` stops after the
 upload; `--activate-only <40-hex sha>` skips build and upload and replays
 verification plus switch against the already uploaded local image.
 
-1. **Pin the commit and its scripts.** `git fetch origin refs/heads/<branch>`,
-   resolve `FETCH_HEAD`, derive tag `gpt-load:<branch>-<short sha>`, then export
-   that commit with `git archive` into a temporary directory and re-execute the
-   exported `scripts/deploy.sh` from there. Build context, verification script,
-   and switch script all come from the commit, so uncommitted local changes
-   cannot enter the image or alter the pipeline. `--activate-only` aborts if the
-   branch head no longer equals the given SHA, so a switch never activates an
-   image that was not the verified one.
+1. **Pin the commit and its scripts.** The release entry resolves the remote
+   `dev` commit after the upstream check and any PR merge, derives tag
+   `gpt-load:dev-<short sha>`, and exports that commit with `git archive` into
+   a temporary directory. Build context, verification script and switch script
+   come from that commit; uncommitted local changes cannot enter the image.
+   `--activate-only` aborts if the selected commit differs from the given SHA.
 2. **Build locally for the server architecture.** `git archive <commit>` feeds
    `docker buildx build --builder default --load --platform linux/<arch>`, with
    `<arch>` from `ssh vps-kl uname -m`. The local Docker endpoint must be a

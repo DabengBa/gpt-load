@@ -15,30 +15,13 @@ SHORT = "abc1234"
 VERSION = "dev-" + SHORT
 
 STUB = f'''#!{sys.executable}
-import io, os, sys, pathlib, tarfile
+import os, sys, pathlib
 
 name = pathlib.Path(sys.argv[0]).name
 args = sys.argv[1:]
 with open(os.environ["CALLS"], "a") as log:
     log.write(name + " " + " ".join(args) + "\\n")
-if name == "git":
-    if args and args[0] == "archive":
-        # Stand in for the fetched commit: the extracted tree is what must run.
-        archive = tarfile.open(fileobj=sys.stdout.buffer, mode="w|")
-        for relative in ("Dockerfile", "scripts/deploy.sh", "scripts/local-rehearsal.py",
-                         "scripts/verify-built-image.py"):
-            path = pathlib.Path(os.environ["REPO"]) / relative
-            content = path.read_bytes()
-            if relative == "scripts/deploy.sh":
-                content = content.replace(b"set -euo pipefail",
-                                          b"set -euo pipefail\\necho bundle-script-ran", 1)
-            info = archive.gettarinfo(str(path), arcname=relative)
-            info.size = len(content)
-            archive.addfile(info, io.BytesIO(content))
-        archive.close()
-    elif "rev-parse" in args:
-        print("{SHORT}" if "--short" in args else "{COMMIT}")
-elif name == "docker":
+if name == "docker":
     if args[:2] == ["context", "inspect"]: print("unix:///var/run/docker.sock")
     if "build" in args: sys.stdin.buffer.read()
     if "build" in args and os.environ["FAIL"] == "build": sys.exit(1)
@@ -60,13 +43,14 @@ elif name == "ssh":
 elif name == "curl":
     print('{{"status":"ok","version":"{VERSION}"}}')
 elif name == "python3":
+    if args and args[0].endswith("release-with-lm-detector.py") and os.environ["FAIL"] == "gate": sys.exit(73)
     if os.environ["FAIL"] == "verify": sys.exit(1)
 '''
 
 
 class DeployTest(unittest.TestCase):
     def run_deploy(self, fail="", endpoint="unix:///var/run/docker.sock"):
-        return self.run_script(fail, endpoint, [])
+        return self.run_script(fail, endpoint, [], internal=True)
 
     def run_script(
         self,
@@ -74,13 +58,15 @@ class DeployTest(unittest.TestCase):
         endpoint="unix:///var/run/docker.sock",
         args=(),
         missing_image=False,
+        internal=False,
+        inherited_commit=False,
     ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             stub = root / "stub"
             stub.write_text(STUB)
             stub.chmod(0o755)
-            for name in ("git", "docker", "ssh", "curl", "python3"):
+            for name in ("docker", "ssh", "curl", "python3"):
                 (root / name).symlink_to(stub)
             env = dict(
                 os.environ,
@@ -88,23 +74,69 @@ class DeployTest(unittest.TestCase):
                 PATH=f"{root}:{os.environ['PATH']}",
                 CALLS=str(root / "calls"),
                 REMOTE=str(root / "remote"),
-                REPO=str(REPO),
+
                 FAIL=fail,
                 MISSING_IMAGE="1" if missing_image else "0",
             )
             env.pop("DOCKER_CONTEXT", None)
             env.pop("DEPLOY_COMMIT", None)
-            result = subprocess.run(
-                ["bash", str(SCRIPT), *args],
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
+            env.pop("DEPLOY_SHA", None)
+            env.pop("DEPLOY_GATE_FD", None)
+            fds = ()
+            if internal or inherited_commit:
+                env["DEPLOY_COMMIT"] = COMMIT
+                env["DEPLOY_SHA"] = SHORT
+            if internal:
+                read_fd, write_fd = os.pipe()
+                os.write(write_fd, f"{COMMIT} {SHORT}\n".encode())
+                os.close(write_fd)
+                env["DEPLOY_GATE_FD"] = str(read_fd)
+                fds = (read_fd,)
+            try:
+                result = subprocess.run(
+                    ["bash", str(SCRIPT), *args], env=env, pass_fds=fds,
+                    capture_output=True, text=True, timeout=60,
+                )
+            finally:
+                if internal:
+                    os.close(read_fd)
             log = root / "calls"
             calls = log.read_text() if log.exists() else ""
             remote = (root / "remote").read_text() if (root / "remote").exists() else ""
             return result, calls, remote
+
+    def test_public_entry_delegates_all_modes_before_any_deployment(self):
+        for args, suffix in (((), ""), (("dev",), ""),
+                             (("dev", "--prepare-only"), " --prepare-only"),
+                             (("dev", "--activate-only", COMMIT), " --activate-only " + COMMIT)):
+            with self.subTest(args=args):
+                result, calls, remote = self.run_script(args=args)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("python3 " + str(REPO / "scripts/release-with-lm-detector.py") + suffix, calls)
+                self.assertNotIn("docker ", calls)
+                self.assertEqual(remote, "")
+
+    def test_gate_failure_blocks_deployment(self):
+        result, calls, remote = self.run_script(fail="gate", args=("dev",))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("docker ", calls)
+        self.assertEqual(remote, "")
+
+    def test_public_entry_rejects_other_branches(self):
+        for branch in ("main", "feature/test"):
+            with self.subTest(branch=branch):
+                result, calls, remote = self.run_script(args=(branch,))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("python3 ", calls)
+                self.assertNotIn("docker ", calls)
+                self.assertEqual(remote, "")
+
+    def test_inherited_internal_commit_cannot_skip_gate(self):
+        result, calls, remote = self.run_script(args=("dev",), inherited_commit=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("禁止绕过发布前同步门禁", result.stderr)
+        self.assertNotIn("docker ", calls)
+        self.assertEqual(remote, "")
 
     def test_local_build_then_load_then_switch(self):
         result, calls, remote = self.run_deploy()
@@ -148,24 +180,21 @@ class DeployTest(unittest.TestCase):
             calls.index("verify-built-image.py"), calls.index("docker save gpt-load:")
         )
 
-    def test_validation_runs_the_fetched_commit_scripts(self):
+    def test_internal_validation_uses_its_own_tree(self):
         result, calls, _ = self.run_deploy()
         self.assertEqual(result.returncode, 0, result.stderr)
-        # The archive of the fetched commit is extracted and executed; the working
-        # tree copy of deploy.sh never runs the build, so a dirty tree cannot ship.
-        self.assertIn("bundle-script-ran", result.stdout)
-        self.assertLess(calls.index("git archive"), calls.index("docker build"))
+        # The separate release integration test verifies the archive boundary.
         verify = [
             line.split()
             for line in calls.splitlines()
             if "verify-built-image.py" in line
         ]
         self.assertEqual(len(verify), 1, calls)
-        self.assertNotIn(str(REPO), verify[0][1])
+        self.assertEqual(verify[0][1], str(REPO / "scripts/verify-built-image.py"))
         self.assertIn("--expected-version " + VERSION, calls)
 
     def test_prepare_only_verifies_and_uploads_but_does_not_switch(self):
-        result, calls, remote = self.run_script(args=("dev", "--prepare-only"))
+        result, calls, remote = self.run_script(args=("dev", "--prepare-only"), internal=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertLess(
             calls.index("docker build"), calls.index("verify-built-image.py")
@@ -177,20 +206,20 @@ class DeployTest(unittest.TestCase):
 
     def test_activate_only_still_verifies_before_switching(self):
         # 切换不是绕开验证的捷径：必须重新验证本地镜像，且不上传、不构建。
-        result, calls, remote = self.run_script(args=("dev", "--activate-only", COMMIT))
+        result, calls, remote = self.run_script(args=("dev", "--activate-only", COMMIT), internal=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("docker build", calls)
         self.assertNotIn("docker save gpt-load:", calls)
         self.assertIn("verify-built-image.py", calls)
         self.assertIn("docker compose", remote)
 
-    def test_activate_only_refuses_a_commit_that_is_not_the_remote_head(self):
+    def test_internal_activate_refuses_a_different_prepared_commit(self):
         result, calls, remote = self.run_script(
-            args=("dev", "--activate-only", "b" * 40)
+            args=("dev", "--activate-only", "b" * 40), internal=True
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("远端分支已变化", result.stderr)
-        # 只允许读取分支信息，不构建、不上传、不切换。
+        # 固定提交与准备时的提交不匹配，不能构建、上传或切换。
         self.assertEqual(
             [line for line in calls.splitlines() if not line.startswith("git")], []
         )
@@ -198,7 +227,7 @@ class DeployTest(unittest.TestCase):
 
     def test_activate_only_refuses_when_the_image_is_missing_locally(self):
         result, calls, remote = self.run_script(
-            args=("dev", "--activate-only", COMMIT), missing_image=True
+            args=("dev", "--activate-only", COMMIT), missing_image=True, internal=True
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("本地没有待切换镜像", result.stderr)

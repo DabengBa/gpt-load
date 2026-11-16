@@ -16,9 +16,12 @@ import (
 	"time"
 
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 
+	"github.com/maximhq/bifrost/core/providers/anthropic"
 	"github.com/maximhq/bifrost/core/providers/gemini"
 	"github.com/maximhq/bifrost/core/providers/openai"
+	providerutils "github.com/maximhq/bifrost/core/providers/utils"
 	"github.com/maximhq/bifrost/core/schemas"
 
 	"gpt-load/internal/channel"
@@ -32,6 +35,7 @@ import (
 
 const (
 	openAIChatPath             = "/v1/chat/completions"
+	modelTraceReasoningEffort  = "low"
 	defaultRequestBudget       = 5 * time.Minute
 	streamingSDKIdleGuardGrace = time.Second
 )
@@ -642,6 +646,11 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 				failure := notSentUnaryFailure(execution.ErrorKindInvalidRequest, "invalid channel probe target")
 				return preparedAttempt{}, &failure
 			}
+			probeBody, marshalErr := marshalNativeProbeBody(spec, protocol.Gemini, spec.UpstreamModel, probeOutputTokenBudget(spec))
+			if marshalErr != nil {
+				failure := notSentUnaryFailure(execution.ErrorKindInternal, "encode native probe body")
+				return preparedAttempt{}, &failure
+			}
 			return preparedAttempt{
 				provider:         provider,
 				mode:             mode,
@@ -651,7 +660,7 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 					Model:    spec.UpstreamModel,
 					Method:   http.MethodPost,
 					Path:     passthroughPath,
-					Body:     geminiProbeRequestBody(spec, probeOutputTokenBudget(spec)),
+					Body:     probeBody,
 					SafeHeaders: map[string]string{
 						"Content-Type": "application/json",
 					},
@@ -689,6 +698,9 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 			probeBody, marshalErr := json.Marshal(responsesProbePayload(spec))
 			if len(spec.ProbePreparedBody) > 0 {
 				probeBody, marshalErr = sanitizePreparedResponsesProbe(spec)
+			}
+			if marshalErr == nil {
+				probeBody, marshalErr = applyModelTraceEffort(spec, protocol.OpenAIResponses, probeBody)
 			}
 			if marshalErr != nil {
 				failure := notSentUnaryFailure(execution.ErrorKindInternal, "encode native Responses probe body")
@@ -1099,6 +1111,13 @@ func newProbeRequest(
 ) *schemas.BifrostChatRequest {
 	content := probePromptText(spec)
 	params := &schemas.ChatParameters{MaxCompletionTokens: schemas.Ptr(maxOutputTokens)}
+	if spec.Operation == execution.OperationModelTrace {
+		effort := modelTraceReasoningEffort
+		if spec.ClientProtocol == protocol.OpenAIResponses {
+			effort = modelTraceResponsesEffort(provider, model)
+		}
+		params.Reasoning = &schemas.ChatReasoning{Effort: schemas.Ptr(effort)}
+	}
 	if providerKind == channel.ProviderOpenAICompatible ||
 		providerKind == channel.ProviderMultiProtocolGateway {
 		// OpenAI-compatible endpoints are not guaranteed to understand
@@ -1119,47 +1138,108 @@ func newProbeRequest(
 	}
 }
 
-// geminiProbeRequestBody builds the native Gemini generateContent body used by
-// the Vertex passthrough probe.
-func geminiProbeRequestBody(spec execution.AttemptSpec, maxOutputTokens int) []byte {
-	body, err := json.Marshal(map[string]any{
-		"contents": []map[string]any{{
-			"role":  "user",
-			"parts": []map[string]string{{"text": probePromptText(spec)}},
-		}},
-		"generationConfig": map[string]int{"maxOutputTokens": maxOutputTokens},
-	})
-	if err != nil {
-		return nil
-	}
-	return body
-}
-
 func marshalNativeProbeBody(
 	spec execution.AttemptSpec,
 	clientProtocol protocol.Protocol,
 	model string,
 	maxOutputTokens int,
 ) ([]byte, error) {
+	var payload map[string]any
 	switch clientProtocol {
 	case protocol.Anthropic:
-		return json.Marshal(map[string]any{
+		payload = map[string]any{
 			"model":      model,
 			"max_tokens": maxOutputTokens,
 			"messages": []map[string]any{{
 				"role": "user", "content": probePromptText(spec),
 			}},
-		})
+		}
 	case protocol.Gemini:
-		return json.Marshal(map[string]any{
+		payload = map[string]any{
 			"contents": []map[string]any{{
 				"role": "user", "parts": []map[string]string{{"text": probePromptText(spec)}},
 			}},
 			"generationConfig": map[string]int{"maxOutputTokens": maxOutputTokens},
-		})
+		}
 	default:
 		return nil, fmt.Errorf("unsupported native probe protocol %q", clientProtocol)
 	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	return applyModelTraceEffort(spec, clientProtocol, body)
+}
+
+func modelTraceResponsesEffort(provider schemas.ModelProvider, model string) string {
+	var fallback *schemas.EffortControl
+	// Only documented model IDs, not arbitrary aliases or similarly named models.
+	if (provider == schemas.OpenAI && (model == "gpt-5-pro" || model == "gpt-5-pro-2025-10-06")) ||
+		(provider == schemas.OpenRouter && (model == "openai/gpt-5-pro" || model == "openai/gpt-5-pro-2025-10-06")) {
+		fallback = &schemas.EffortControl{Levels: []string{schemas.ReasoningEffortHigh}}
+	}
+	return schemas.ResolveModelCaps(provider, model).NormalizeReasoningEffort(modelTraceReasoningEffort, fallback)
+}
+
+func applyModelTraceEffort(spec execution.AttemptSpec, clientProtocol protocol.Protocol, body []byte) ([]byte, error) {
+	if spec.Operation != execution.OperationModelTrace {
+		return body, nil
+	}
+	if clientProtocol == protocol.Anthropic {
+		caps := schemas.ResolveModelCaps(schemas.Anthropic, spec.UpstreamModel)
+		if !caps.SupportsNativeEffort(anthropic.DefaultSupportsNativeEffort(caps.Model())) {
+			maxTokens := int(gjson.GetBytes(body, "max_tokens").Int())
+			if maxTokens <= anthropic.MinimumReasoningMaxTokens {
+				return body, nil
+			}
+			budget, err := providerutils.GetBudgetTokensFromReasoningEffort(modelTraceReasoningEffort, anthropic.MinimumReasoningMaxTokens, maxTokens)
+			if err != nil {
+				return nil, err
+			}
+			return sjson.SetBytes(body, "thinking", map[string]any{"type": "enabled", "budget_tokens": budget})
+		}
+	}
+	if clientProtocol == protocol.Gemini {
+		provider := schemas.Gemini
+		if channel.ID(spec.ChannelID) == channel.GoogleVertex {
+			provider = schemas.Vertex
+		}
+		caps := schemas.ResolveModelCaps(provider, spec.UpstreamModel)
+		// Keep the fallback aligned with the SDK's defaultSupportsReasoning.
+		model := strings.ToLower(caps.Model())
+		index := strings.Index(model, "gemini-")
+		gemini3Plus := index >= 0 && len(model) > index+7 && model[index+7] >= '3' && model[index+7] <= '9'
+		fallback := strings.Contains(model, "thinking") || strings.Contains(model, "gemini-2.5") || gemini3Plus
+		if !caps.SupportsReasoning(fallback) {
+			return body, nil
+		}
+	}
+	effort := modelTraceReasoningEffort
+	if clientProtocol == protocol.OpenAIResponses {
+		effort = modelTraceResponsesEffort(schemas.OpenAI, spec.UpstreamModel)
+	}
+	body, _, err := dialect.SetReasoningEffort(body, effort, clientProtocol)
+	if err == nil && clientProtocol == protocol.Gemini {
+		body, err = gemini.NormalizeRawReasoningForModel(body, spec.UpstreamModel, modelTraceReasoningEffort)
+		if err != nil {
+			return nil, err
+		}
+		budget := gjson.GetBytes(body, "generationConfig.thinkingConfig.thinkingBudget").Int()
+		output := gjson.GetBytes(body, "generationConfig.maxOutputTokens").Int()
+		if budget > 0 && output > 0 {
+			provider := schemas.Gemini
+			if channel.ID(spec.ChannelID) == channel.GoogleVertex {
+				provider = schemas.Vertex
+			}
+			cap := int64(schemas.ResolveModelCaps(provider, spec.UpstreamModel).MaxOutputTokens(0))
+			total := output + budget
+			if total < output || (cap > 0 && total > cap) {
+				return sjson.DeleteBytes(body, "generationConfig.thinkingConfig")
+			}
+			body, err = sjson.SetBytes(body, "generationConfig.maxOutputTokens", total)
+		}
+	}
+	return body, err
 }
 
 func providerSupportsPassthrough(providerKind channel.ProviderKind) bool {

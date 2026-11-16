@@ -398,10 +398,10 @@ func TestMultiProtocolGatewayProbeSerializesMaxTokensToChatWire(t *testing.T) {
 }
 
 // TestModelTraceChallengeRunsOnTheProbeWireWithItsOwnPrompt proves the
-// fingerprint challenge is wire-identical to a probe — same target, same token
-// field, same budget contract — while carrying its own prompt and its own
-// result field. A challenge must never inherit the probe question or the probe
-// answer flags, otherwise attribution would silently drift from the bank the
+// fingerprint challenge uses the probe target and token budget, requests low
+// reasoning effort, and carries its own prompt and result field. A challenge
+// must never inherit the probe question or answer flags, otherwise attribution
+// would silently drift from the bank the
 // challenge came from.
 func TestModelTraceChallengeRunsOnTheProbeWireWithItsOwnPrompt(t *testing.T) {
 	t.Parallel()
@@ -429,6 +429,9 @@ func TestModelTraceChallengeRunsOnTheProbeWireWithItsOwnPrompt(t *testing.T) {
 		}
 		if payload["max_tokens"] != float64(testProbeOutputTokens) {
 			t.Errorf("challenge max_tokens = %#v, want %d", payload["max_tokens"], testProbeOutputTokens)
+		}
+		if payload["reasoning_effort"] != "low" {
+			t.Errorf("challenge reasoning_effort = %#v, want low", payload["reasoning_effort"])
 		}
 		if _, exists := payload["max_completion_tokens"]; exists {
 			t.Errorf("challenge carried max_completion_tokens: %s", body)

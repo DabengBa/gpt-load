@@ -45,7 +45,7 @@ func prepareGatewayProtocolProbe(
 		path = "/v1/messages"
 		payload = map[string]any{
 			"model": spec.UpstreamModel, "max_tokens": budget, "stream": false,
-			"messages": []map[string]string{{"role": "user", "content": probeQuestion}},
+			"messages": []map[string]string{{"role": "user", "content": probePromptText(spec)}},
 		}
 	case protocol.Gemini:
 		budget := probeOutputTokenBudget(spec)
@@ -61,6 +61,9 @@ func prepareGatewayProtocolProbe(
 	body, err := json.Marshal(payload)
 	if spec.ClientProtocol == protocol.OpenAIResponses && len(spec.ProbePreparedBody) > 0 {
 		body, err = sanitizePreparedResponsesProbe(spec)
+	}
+	if err == nil && (spec.ClientProtocol == protocol.OpenAIResponses || spec.ClientProtocol == protocol.Anthropic || spec.ClientProtocol == protocol.Gemini) {
+		body, err = applyModelTraceEffort(spec, spec.ClientProtocol, body)
 	}
 	if err != nil {
 		failure := notSentUnaryFailure(execution.ErrorKindInternal, "encode gateway protocol probe")

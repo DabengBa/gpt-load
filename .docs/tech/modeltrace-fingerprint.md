@@ -51,19 +51,14 @@ upstream model's identity.
 - The SDK and its matching reference data are bundled with GPT-Load. The data
   is loaded locally on the first fingerprint run; no separate analysis service
   or runtime download is required.
-- `.github/workflows/update-lm-detector.yml` checks upstream daily and can be
-  run manually. `scripts/update-lm-detector.py` resolves one upstream commit,
-  updates the SDK and both embedded data files together, and opens a `dev` PR
-  after validation. Unrelated upstream changes are skipped; license changes
-  require manual review. GitHub Actions must be allowed to create pull requests
-  in the repository's Actions settings. PRs created with `GITHUB_TOKEN` do not
-  generally trigger other PR workflows, so the updater runs its Go checks before
-  creating the PR. A Dependabot PR for the Go SDK alone must not be merged
-  without updating the matching data.
-  Scheduled workflows run from the default branch, while the updater is checked
-  out from `dev`, so both branches need the workflow and script. Merging the PR
-  does not update Hostinger: deploy the resulting GPT-Load commit using the
-  [release pipeline](release-pipeline.md).
+- The Hostinger release entry point checks upstream before every release.
+  `scripts/update-lm-detector.py` resolves one upstream commit and updates the
+  SDK and both embedded data files together. Relevant changes are validated and
+  merged via a `dev` PR before deployment; unrelated changes are skipped and a
+  license change requires manual review. See the [release pipeline](release-pipeline.md).
+  The legacy scheduled workflow is not relied on: GitHub schedules require the
+  workflow on the default branch. A Dependabot PR for the Go SDK alone must not
+  be merged without updating the matching data.
 - The run has a ten-minute deadline, duplicate runs for the same group/model
   are rejected, and at most four runs execute concurrently per process.
 - Attribution is diagnostic only. It does not trigger health recovery,
@@ -78,6 +73,37 @@ upstream model's identity.
   ID/log entry, including failed executions. A failure before dispatch has no
   request log. Request-log persistence remains best effort and does not replace
   the API result.
+- ModelTrace challenges request low reasoning effort by default; ordinary
+  probes and user requests do not inherit this setting. Responses uses
+  `reasoning.effort` and Chat uses `reasoning_effort`. Responses consults SDK
+  effort capabilities, with a narrow high-only fallback for the exact
+  `gpt-5-pro` and `gpt-5-pro-2025-10-06` IDs (and their `openai/` OpenRouter
+  IDs); a capability record takes precedence. Native Anthropic and
+  Anthropic-protocol gateway requests use `output_config.effort` for models
+  accepting it; otherwise they use the SDK's low-effort thinking budget mapping
+  (for example Haiku 4.5 and Sonnet 4.5). If the output limit cannot fit the
+  minimum thinking budget, reasoning controls are omitted. Native Gemini and
+  Vertex omit thinking controls for models without reasoning support; otherwise
+  the existing model-aware Gemini normalization uses a thinking level for
+  newer models (which may be clamped) or a derived budget for older models.
+  For a positive Gemini thinking budget, ModelTrace increases `maxOutputTokens`
+  by that budget to retain the original answer allowance. If a known model
+  output cap cannot fit the total, it omits the explicit thinking control and
+  retains the original output limit instead. Typed provider conversions use the
+  SDK's own mapping.
+- Low effort is a request, not a guarantee: model and provider support varies,
+  compatible endpoints may reject or ignore the parameter, and SDK conversions
+  may omit or translate it (including on Bedrock). Anthropic and Gemini
+  capability checks rely on the configured upstream model name and available
+  SDK capabilities; opaque gateway aliases and unknown models can be
+  misclassified, and the SDK's budget fallback does not prove that every older
+  Anthropic model accepts thinking. Gemini normalization also relies on the
+  model name; when no output cap is known, the enlarged limit may still be
+  rejected by the actual upstream. Gateway model names need not identify their
+  backing model, and unknown Responses aliases retain low unless capabilities
+  say otherwise. Omitting a thinking control leaves the provider's default in
+  effect, not necessarily disabled. There is no retry without reasoning controls
+  on rejection; such a challenge can fail.
 - The run freezes the published model-price table before dispatching its
   challenge batch. Reported valid usage is retained even when the attempt
   failed; absent or invalid usage is marked missing rather than treated as
