@@ -75,7 +75,24 @@ scripts/deploy.sh dev --activate-only <完整提交SHA>  # 不构建、不上传
 
 入口是本地仓库里的 `scripts/deploy.sh`，当前仅支持发布 `dev`。每次执行（包括准备和激活）先检查上游 lm-detector：有 SDK 或指纹数据变更时，在临时检出中同步并运行验证，创建或恢复匹配的 PR，等待检查成功并合并到 `DabengBa/gpt-load:dev`，然后发布合并提交；无变更时发布当前远端 `dev`。检查、验证、PR 或合并失败会停止发布，不会清理已有远端分支或 PR。激活时若上游或 `dev` 已变化则停止，须重新准备。PR 合并 API 无法原子锁定 base；合并后发现 base 已变化会停止部署，但不能撤销已经发生的合并。避免与其他 `dev` 合并并发执行发布。
 
-本机需要 Git、已认证的 GitHub CLI、Go、Docker Buildx、Python 3、gzip、curl 和可连接 `vps-kl` 的 SSH；Docker 必须使用本机 Unix socket。服务器需要 Docker 与 `findmnt`。BuildKit 和构建缓存留在本机，服务器不执行 Git 拉取、源码编译或镜像构建。默认不要求、也不接受把生产数据带到本地：常规发布的验证全部在合成夹具上完成。
+本机需要 Git、已认证的 GitHub CLI、Go、Docker Buildx、Python 3、gzip、curl 和可连接 `vps-kl` 的 SSH；Docker 必须使用本机 Unix socket。服务器需要 Docker、`findmnt`、Bash 和 curl（支持 `--header @-`）。BuildKit 和构建缓存留在本机，服务器不执行 Git 拉取、源码编译或镜像构建。默认不要求、也不接受把生产数据带到本地：发布前的镜像验证全部在合成夹具上完成。
+
+### 「推送并更新 Hostinger」操作提示
+
+发布仍由 `scripts/deploy.sh` 完成；以下辅助检查是操作者主动执行的汇总，不是新增发布门禁，也不会提交、推送、构建、上传或切换。明确用户授权和本次文件范围后：
+
+1. 可先执行 `python3 scripts/deployment-checks.py preflight`：并行检查本地 Git 分支、脏工作区和 `origin/dev` 头是否相同，Hostinger 容器、回环 health 和文件系统是否可访问，以及离线 `make test-deploy`。脏工作区或远端不一致仅报告，可能是尚未提交/推送；命令失败会给出对应项的 FAIL。它**不**验证 SSH 指纹、磁盘剩余空间是否足够或外部写入者，仍须按「SSH 目标」和步骤 1 人工核对；按变更另外运行相关测试。
+2. 只提交授权文件并推送到 `DabengBa/gpt-load:dev`，再运行上面的 `scripts/deploy.sh dev`（或对应准备/激活模式）。入口同步检测器并固定最终远端提交，切换守卫不由辅助检查替代。构建一段时间没有新输出不等于卡死；先检查本地 buildx 进程、资源与已有构建输出，确认真正故障后才决定是否中止，不能仅因安静而停止。不要在停写到启动的连续远端流程中插入操作。
+3. 完整切换结束后，从脚本输出记录**本次**版本和 `停写并备份:` 后的备份目录，执行：
+
+   ```bash
+   python3 scripts/deployment-checks.py post --version dev-<短sha> --backup /opt/gpt-load/pre-upgrade.<本次随机后缀>
+   ```
+
+   此命令并行汇总容器标签、健康及重启次数、本机和公网 health 的精确版本、管理 API、分页分组的真实凭据 reveal、最近五分钟日志错误关键词计数及指定备份文件是否非空。分组按创建时间和 ID 稳定排序，检查分页元数据、重复 ID 和总数，并在解密前后分别遍历并比较完整 ID 序列；这不是事务快照，并发增删或凭据变化仍可能影响覆盖，应在稳定时复核。reveal 会写审计记录，不调用 Provider；若没有可用凭据会报告解密未验证，不视为通过。默认从容器 `/app/data/auth.key` 读取认证值，通过管道传给服务器 curl 的标准输入，不放入进程参数；若该实例改为仅通过环境变量提供认证则需另行安全验证。管理 API 响应（含解密后的凭据）通过 SSH 返回本地进程内存，但不由脚本写入文件或打印；日志内容不会打印，失败详情也被抑制，应安全地单独诊断。备份非空不等于恢复验证，日志关键词计数也不能证明无错误。`--prepare-only` 没有切换或最终备份，不运行此发布后检查。
+4. 根据实际变更另行验证相关功能，记录证据与未验证项；真实 Provider 请求可能产生费用或副作用，**不是必经检查**，仅在明确授权和需要时执行。不要打印凭据、完整 API 响应或敏感日志。
+
+注意：现有 `scripts/deploy.sh` 的自动公网检查及上述辅助命令使用 `https://gptl.tanyaleoallen.online/health`，而本文拓扑记录的主入口为 `https://gptl.tanyaleoallen.cloud/health`。两者不同；在确认实际入口和域名配置前不可把一个的成功当作另一个成功，操作者仍须单独验证本文主入口。此处未擅自修改现有发布地址。
 
 1. **固定版本与授权范围。** 核对 Hostinger SSH 目标、现有镜像、health、数据卷和持久磁盘空间。完成相关测试，只提交本次文件并推送到 `DabengBa/gpt-load` 的 `dev`，不要夹带其他工作区改动。发布入口检查并在需要时合并上游检测器更新，记录最终提交 SHA、目标标签、旧镜像和需要的修复 SQL；没有格式问题就不修数据。
 2. **本地构建并按服务器架构验证。** 发布入口将最终的远端提交用 `git archive` 导出，在导出副本中执行该提交的 `deploy.sh`；构建上下文、验证脚本和切换脚本都来自这个提交，本地未提交改动不进入镜像。然后在服务器架构上用本机 builder 构建，并运行 `scripts/verify-built-image.py --expected-version <分支>-<短sha>`（见下节）。验证失败即中止，不执行 `docker save` 上传，旧容器继续提供服务。
@@ -100,7 +117,7 @@ debug capture 路径是显式覆盖的：旧镜像的库里先有未压缩的 ca
 
 它仍不覆盖生产数据规模、真实分组形态与每分组凭据数量、retention 启动清理、历史异常台账行、真实 Provider 流量和升级耗时。即它只证明「目标镜像能在空库与上一版真实镜像的库上两次启动、迁移到与全新安装一致的台账、保留并解码既有 capture 数据、并正确解密凭据」，不证明任何具体生产库兼容或数据无损。完整契约（阶段、守卫、边界）由 [发布流水线](../.docs/tech/release-pipeline.md) 持有，本节只保留操作者判断；需要按生产数据形态验证时另行发起并单独限定范围的快照演练，它不属于必经步骤。
 
-流程本身的离线回归是 `make test-deploy`（`scripts/test-deploy.py`、`scripts/test-deploy-activation.py`、`scripts/test-verify-built-image.py`），不需要 Docker、SSH 或生产访问。
+流程本身的离线回归是 `make test-deploy`（包括 `scripts/test-deploy.py`、`scripts/test-deploy-activation.py`、`scripts/test-verify-built-image.py`、`scripts/test-release-with-lm-detector.py` 和 `scripts/test-deployment-checks.py`），不需要 Docker、SSH 或生产访问。
 
 ### 可选的快照演练（不属发布必经步骤）
 

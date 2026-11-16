@@ -5,6 +5,7 @@ topic: release-pipeline
 code:
   paths:
     - scripts/deploy.sh
+    - scripts/deployment-checks.py
     - scripts/release-with-lm-detector.py
     - scripts/verify-built-image.py
     - scripts/local-rehearsal.py
@@ -93,6 +94,17 @@ killed process still needs manual recovery.
 **Downtime.** Single instance: in-flight HTTP and streaming requests are
 cancelled between stop and start. The pipeline does not promise zero downtime,
 does not run `VACUUM`, and does not prune images or backups.
+
+The optional operator-invoked `scripts/deployment-checks.py` runs independent
+preflight observations and offline deployment tests in parallel, or consolidates
+post-switch checks including administrator credential reveal and the specified
+backup's presence. The admin key reaches host curl over a pipe rather than in
+process arguments; reveal responses travel over SSH into local process memory.
+Created-order pagination is checked twice for unique, complete IDs, but is not a
+transactional snapshot. It does not change the release entry point or its guards and
+does not make a provider request. Its check boundaries and the current discrepancy
+between the script's public health hostname and the runbook's main hostname are
+documented in the operator runbook; neither hostname is changed by the helper.
 
 ## Binding points
 

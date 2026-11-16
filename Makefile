@@ -31,7 +31,7 @@ test: ## Run Go unit tests
 
 .PHONY: test-deploy
 test-deploy: ## Run deployment regression tests without Docker or SSH
-	python3 -m unittest -v scripts/test-deploy.py scripts/test-deploy-activation.py scripts/test-verify-built-image.py scripts/test-release-with-lm-detector.py
+	python3 -m unittest -v scripts/test-deploy.py scripts/test-deploy-activation.py scripts/test-verify-built-image.py scripts/test-release-with-lm-detector.py scripts/test-deployment-checks.py
 
 .PHONY: check
 check: test-deploy _web-deps ## Run source checks and build
