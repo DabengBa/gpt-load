@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,6 +26,55 @@ import (
 )
 
 const probeTestModel = "gpt-4o"
+
+type cancellingModelProbeExecutor struct {
+	*credentialProbeTestExecutor
+	started   chan struct{}
+	cancelled chan struct{}
+}
+
+func (executor *cancellingModelProbeExecutor) Execute(ctx context.Context, _ execution.AttemptSpec) execution.AttemptResult {
+	close(executor.started)
+	<-ctx.Done()
+	close(executor.cancelled)
+	return execution.AttemptResult{}
+}
+
+func TestModelProbeCancellationReachesExecutor(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	groupID := createGroupWithCredentials(t, fixture, "model-probe-cancel-secret")
+	executor := &cancellingModelProbeExecutor{
+		credentialProbeTestExecutor: &credentialProbeTestExecutor{},
+		started:                     make(chan struct{}), cancelled: make(chan struct{}),
+	}
+	fixture.service.executor = executor
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = fixture.service.ProbeGroupModels(ctx, ModelProbeRequest{
+			Targets: []ModelProbeTargetRequest{{GroupID: groupID, Model: probeTestModel}},
+		})
+	}()
+	select {
+	case <-executor.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("probe did not reach executor")
+	}
+	cancel()
+	select {
+	case <-executor.cancelled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancellation did not reach executor")
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("probe did not finish after cancellation")
+	}
+}
 
 func createProbeGroup(t *testing.T, fixture serviceFixture, models []string) uint {
 	t.Helper()

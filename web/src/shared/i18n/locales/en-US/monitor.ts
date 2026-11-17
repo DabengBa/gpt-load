@@ -21,6 +21,8 @@ export default {
       loading: 'Probing…',
       requestFailed: 'The probe request failed; completed results are kept.',
       stopped: 'Stopped. Completed results are kept.',
+      stopping: 'Cancelling unfinished probes…',
+      viewLast: 'View last probe',
       progress: '{completed}/{total} complete',
       summary: '{passed} passed · {failed} failed · {inconclusive} inconclusive',
       close: 'Close',

@@ -38,6 +38,10 @@ Credential probes and ModelTrace retain their separate request semantics.
 ## Recovery, logs and limits
 
 Results report per-target outcomes and link executed attempts to request logs.
+The dialog sends individual target requests with up to four in flight. Stopping
+or closing it aborts unfinished requests and leaves queued targets undispatched;
+completed responses remain available in the last probe view. Cancellation
+propagates through the HTTP request context to the upstream executor.
 Existing concurrent recovery guards remain in force; a model result must not
 restore a route after its request-relevant parameter rules or model settings
 change. Explicit probing of a disabled group does not make it routable. Probe

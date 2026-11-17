@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import {
   runModelProbe,
@@ -8,9 +8,7 @@ import {
 
 import { useAppServices } from '../../app/services'
 
-// One batch request stays bounded, so the dialog sends targets in sequential
-// chunks instead of one long-lived HTTP request.
-const chunkSize = 8
+const concurrency = 4
 
 export interface ModelProbeSummary {
   passed: number
@@ -53,9 +51,10 @@ const idleRunState: ModelProbeRunState = {
 export function useModelProbe() {
   const { apiClient } = useAppServices()
   const [run, setRun] = useState<ModelProbeRunState>(idleRunState)
-  // Bumped on close/restart so an in-flight chunk cannot append into a newer run.
+  // A late callback must never append to a newer run.
   const generationRef = useRef(0)
-  const stoppedRef = useRef(false)
+  const controllerRef = useRef<AbortController | null>(null)
+  useEffect(() => () => controllerRef.current?.abort(), [])
 
   const total = run.targets.length
   const completed = run.results.length
@@ -67,10 +66,20 @@ export function useModelProbe() {
     options: ModelProbeStartOptions = {},
   ): Promise<void> {
     if (nextTargets.length === 0) return
+    controllerRef.current?.abort()
     generationRef.current += 1
     const current = generationRef.current
-    const targets = [...nextTargets]
-    stoppedRef.current = false
+    const targets = nextTargets.filter(
+      (target, index) =>
+        nextTargets.findIndex(
+          (other) =>
+            other.group_id === target.group_id &&
+            other.model === target.model &&
+            other.protocol === target.protocol,
+        ) === index,
+    )
+    const controller = new AbortController()
+    controllerRef.current = controller
     setRun({
       open: true,
       pending: true,
@@ -80,32 +89,53 @@ export function useModelProbe() {
       disabledGroupIds: [...(options.disabledGroupIds ?? [])],
       results: [],
     })
-    try {
-      for (let index = 0; index < targets.length; index += chunkSize) {
-        if (stoppedRef.current || generationRef.current !== current) return
-        const chunkResults = await runModelProbe(apiClient, targets.slice(index, index + chunkSize))
-        if (generationRef.current !== current) return
-        setRun((prev) => ({ ...prev, results: [...prev.results, ...chunkResults] }))
+    let index = 0
+    const resultsByTarget: ModelProbeResultDto[][] = Array.from(
+      { length: targets.length },
+      () => [],
+    )
+    async function worker(): Promise<void> {
+      while (
+        !controller.signal.aborted &&
+        generationRef.current === current &&
+        index < targets.length
+      ) {
+        const targetIndex = index++
+        const target = targets[targetIndex]!
+        try {
+          const results = await runModelProbe(apiClient, [target], controller.signal)
+          if (generationRef.current === current) {
+            resultsByTarget[targetIndex] = results
+            const orderedResults = resultsByTarget.flat()
+            setRun((prev) => ({ ...prev, results: orderedResults }))
+          }
+        } catch {
+          if (!controller.signal.aborted && generationRef.current === current) {
+            setRun((prev) => ({ ...prev, failed: true }))
+            controller.abort()
+          }
+        }
       }
-    } catch {
-      if (generationRef.current === current) setRun((prev) => ({ ...prev, failed: true }))
-    } finally {
-      if (generationRef.current === current) setRun((prev) => ({ ...prev, pending: false }))
+    }
+    await Promise.all(Array.from({ length: Math.min(concurrency, targets.length) }, () => worker()))
+    if (generationRef.current === current) {
+      controllerRef.current = null
+      setRun((prev) => ({ ...prev, pending: false }))
     }
   }
 
-  // Stopping only stops sending further chunks: results for an already-issued
-  // request stay visible, because that upstream request (and its cost) happened.
   function stop(): void {
-    stoppedRef.current = true
+    controllerRef.current?.abort()
     setRun((prev) => ({ ...prev, stopped: true }))
   }
 
   function close(): void {
-    if (run.pending) return
-    generationRef.current += 1
-    stoppedRef.current = false
-    setRun(idleRunState)
+    if (controllerRef.current) stop()
+    setRun((prev) => ({ ...prev, open: false }))
+  }
+
+  function reopen(): void {
+    setRun((prev) => ({ ...prev, open: true }))
   }
 
   return {
@@ -116,5 +146,6 @@ export function useModelProbe() {
     start,
     stop,
     close,
+    reopen,
   }
 }

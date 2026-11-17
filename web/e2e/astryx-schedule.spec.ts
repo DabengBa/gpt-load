@@ -95,9 +95,10 @@ test('batch probe sends visible fixed-group targets after disabled confirmation'
   page,
 }) => {
   await installScheduleRoutes(page)
-  let payload: unknown
+  const payloads: Array<{ targets: Array<{ group_id: number; model: string }> }> = []
   await page.route('**/api/model-probe', async (route) => {
-    payload = route.request().postDataJSON()
+    const payload = route.request().postDataJSON()
+    payloads.push(payload)
     await route.fulfill(
       response({
         results: [
@@ -133,23 +134,23 @@ test('batch probe sends visible fixed-group targets after disabled confirmation'
             log_id: null,
             tested_at_ms: 1700000000000,
           },
-        ],
+        ].filter((result) => result.group_id === payload.targets[0].group_id),
       }),
     )
   })
   await openSchedule(page, '?schedule_model=worker')
   await page.getByRole('button', { name: 'Probe 2 visible rows' }).click()
   await expect(page.getByRole('button', { name: 'Probe all (2 rows)' })).toBeVisible()
-  expect(payload).toBeUndefined()
+  expect(payloads).toHaveLength(0)
   await page.getByRole('button', { name: 'Probe all (2 rows)' }).click()
   await expect
-    .poll(() => payload)
-    .toEqual({
-      targets: [
-        { group_id: 1, model: 'model-a' },
-        { group_id: 2, model: 'model-b' },
-      ],
-    })
+    .poll(() =>
+      payloads.flatMap((payload) => payload.targets).sort((a, b) => a.group_id - b.group_id),
+    )
+    .toEqual([
+      { group_id: 1, model: 'model-a' },
+      { group_id: 2, model: 'model-b' },
+    ])
   const dialog = page.getByRole('dialog')
   await expect(
     dialog.getByRole('listitem').filter({ hasText: 'primary group · model-a' }),
@@ -158,6 +159,287 @@ test('batch probe sends visible fixed-group targets after disabled confirmation'
     dialog.getByRole('listitem').filter({ hasText: 'secondary group · model-b' }),
   ).toContainText('Passed')
   await expect(dialog.getByRole('button', { name: 'Probe again' })).toHaveCount(0)
+})
+
+test('batch results remain in target order as requests finish out of order', async ({ page }) => {
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      detail.groups[0]!.entries.push({
+        ...entry('extra', 'model-extra', 100),
+        configured_share: 0.5,
+        effective_share: 0.5,
+      })
+      detail.groups[0]!.entries[0]!.configured_share = 0.5
+      detail.groups[0]!.entries[0]!.effective_share = 0.5
+      return detail
+    },
+  })
+  const releases = new Map<string, () => void>()
+  await page.route('**/api/model-probe', async (route) => {
+    const target = route.request().postDataJSON().targets[0]
+    await new Promise<void>((resolve) => releases.set(target.model, resolve))
+    await route.fulfill(
+      response({
+        results: [
+          {
+            group_id: target.group_id,
+            group_name: target.group_id === 1 ? 'primary group' : 'secondary group',
+            model: target.model,
+            outcome: 'passed',
+            reason: null,
+            protocol: 'openai-completions',
+            route_mode: 'native',
+            status_code: 200,
+            latency_ms: 12,
+            credential_id: 3,
+            credential_label: 'masked',
+            recovered: false,
+            log_id: null,
+            tested_at_ms: 1700000000000,
+          },
+        ],
+      }),
+    )
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await page.getByRole('button', { name: 'Probe 3 visible rows' }).click()
+  await page.getByRole('button', { name: 'Probe all (3 rows)' }).click()
+  await expect.poll(() => releases.size).toBe(3)
+  const items = page.getByRole('dialog').getByRole('listitem')
+  releases.get('model-b')!()
+  await expect(items).toHaveCount(1)
+  releases.get('model-extra')!()
+  await expect(items).toHaveCount(2)
+  await expect(items.nth(0)).toContainText('model-extra')
+  await expect(items.nth(1)).toContainText('model-b')
+  releases.get('model-a')!()
+  await expect(items).toHaveCount(3)
+  await expect(items.nth(0)).toContainText('model-a')
+  await expect(items.nth(1)).toContainText('model-extra')
+  await expect(items.nth(2)).toContainText('model-b')
+})
+
+test('reopened retry checks the original model after switching models', async ({ page }) => {
+  let disabled = false
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      if (model === 'worker') {
+        detail.groups[0]!.enabled = !disabled
+        if (disabled) {
+          detail.groups[0]!.entries[0]!.configured_share = 0
+          detail.groups[0]!.entries[0]!.effective_share = 0
+        }
+      } else {
+        detail.groups = detail.groups.filter((group) => group.group_id !== 1)
+      }
+      return detail
+    },
+  })
+  const requests: unknown[] = []
+  await page.route('**/api/model-probe', async (route) => {
+    requests.push(route.request().postDataJSON())
+    await route.fulfill(
+      response({
+        results: [
+          {
+            group_id: 1,
+            group_name: 'primary group',
+            model: 'model-a',
+            outcome: 'passed',
+            reason: null,
+            protocol: 'openai-completions',
+            route_mode: 'native',
+            status_code: 200,
+            latency_ms: 12,
+            credential_id: 3,
+            credential_label: 'masked',
+            recovered: false,
+            log_id: null,
+            tested_at_ms: 1700000000000,
+          },
+        ],
+      }),
+    )
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await rows(page)
+    .filter({ hasText: 'primary group' })
+    .getByRole('button', { name: 'Probe', exact: true })
+    .click()
+  const dialog = page.getByRole('dialog', { name: 'Model liveness' })
+  await expect(dialog.getByRole('button', { name: 'Probe again' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Close' }).last().click()
+  disabled = true
+  await page
+    .getByTestId('schedule-model-list')
+    .filter({ visible: true })
+    .getByRole('button', { name: 'worker-b' })
+    .click()
+  await expect(rows(page).filter({ hasText: 'secondary group-b' })).toBeVisible()
+  const refreshed = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/model-route/schedule/detail?') &&
+      new URL(response.url()).searchParams.get('external_model') === 'worker',
+  )
+  await page.getByRole('button', { name: 'View last probe' }).click()
+  await refreshed
+  await dialog.getByRole('button', { name: 'Probe again' }).click()
+  const confirm = page.getByRole('alertdialog')
+  await expect(confirm.getByText('This group is disabled')).toBeVisible()
+  expect(requests).toHaveLength(1)
+  await confirm.getByRole('button', { name: 'Cancel' }).click()
+  expect(requests).toHaveLength(1)
+  await dialog.getByRole('button', { name: 'Probe again' }).click()
+  await confirm.getByRole('button', { name: 'Probe', exact: true }).click()
+  await expect.poll(() => requests.length).toBe(2)
+  expect(requests).toEqual([
+    { targets: [{ group_id: 1, model: 'model-a' }] },
+    { targets: [{ group_id: 1, model: 'model-a' }] },
+  ])
+})
+
+test('reopened retry of an enabled historical group proceeds normally', async ({ page }) => {
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      if (model === 'worker-b')
+        detail.groups = detail.groups.filter((group) => group.group_id !== 1)
+      return detail
+    },
+  })
+  let calls = 0
+  await page.route('**/api/model-probe', async (route) => {
+    calls += 1
+    await route.fulfill(
+      response({
+        results: [
+          {
+            group_id: 1,
+            group_name: 'primary group',
+            model: 'model-a',
+            outcome: 'passed',
+            reason: null,
+            protocol: 'openai-completions',
+            route_mode: 'native',
+            status_code: 200,
+            latency_ms: 12,
+            credential_id: 3,
+            credential_label: 'masked',
+            recovered: false,
+            log_id: null,
+            tested_at_ms: 1700000000000,
+          },
+        ],
+      }),
+    )
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await rows(page)
+    .filter({ hasText: 'primary group' })
+    .getByRole('button', { name: 'Probe', exact: true })
+    .click()
+  const dialog = page.getByRole('dialog', { name: 'Model liveness' })
+  await expect(dialog.getByRole('button', { name: 'Probe again' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Close' }).last().click()
+  await page
+    .getByTestId('schedule-model-list')
+    .filter({ visible: true })
+    .getByRole('button', { name: 'worker-b' })
+    .click()
+  await expect(rows(page).filter({ hasText: 'secondary group-b' })).toBeVisible()
+  const refreshed = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/model-route/schedule/detail?') &&
+      new URL(response.url()).searchParams.get('external_model') === 'worker',
+  )
+  await page.getByRole('button', { name: 'View last probe' }).click()
+  await refreshed
+  await expect(
+    dialog.getByText('This group remains disabled and does not serve traffic.'),
+  ).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Probe again' }).click()
+  await expect.poll(() => calls).toBe(2)
+  await expect(page.getByRole('alertdialog')).toHaveCount(0)
+})
+
+test('batch stop retains completed results and cancels active requests without dispatching the queue', async ({
+  page,
+}) => {
+  await installScheduleRoutes(page, {
+    projectDetail: (model) => {
+      const detail = detailForModel(model)
+      for (let index = 0; index < 5; index += 1) {
+        detail.groups[0]!.entries.push(entry(`extra-${index}`, `extra-${index}`, 100))
+      }
+      for (const item of detail.groups[0]!.entries) {
+        item.weight = 100
+        item.configured_share = 1 / 6
+        item.effective_share = 1 / 6
+      }
+      return detail
+    },
+  })
+  const started: string[] = []
+  let cancelled = 0
+  let release!: () => void
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  page.on('requestfailed', (request) => {
+    if (request.url().endsWith('/api/model-probe')) cancelled += 1
+  })
+  await page.route('**/api/model-probe', async (route) => {
+    const target = route.request().postDataJSON().targets[0]
+    started.push(target.model)
+    if (target.model === 'model-a') {
+      await route.fulfill(
+        response({
+          results: [
+            {
+              group_id: 1,
+              group_name: 'primary group',
+              model: 'model-a',
+              outcome: 'passed',
+              reason: null,
+              protocol: 'openai-completions',
+              route_mode: 'native',
+              status_code: 200,
+              latency_ms: 12,
+              credential_id: 3,
+              credential_label: 'masked',
+              recovered: false,
+              log_id: null,
+              tested_at_ms: 1700000000000,
+            },
+          ],
+        }),
+      )
+    } else {
+      await waiting
+      await route.abort().catch(() => {})
+    }
+  })
+  await openSchedule(page, '?schedule_model=worker')
+  await page.getByRole('button', { name: 'Probe 7 visible rows' }).click()
+  await page.getByRole('button', { name: 'Probe all (7 rows)' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(
+    dialog.getByRole('listitem').filter({ hasText: 'primary group · model-a' }),
+  ).toContainText('Passed')
+  await expect.poll(() => started.length).toBe(5)
+  await dialog.getByRole('button', { name: 'Stop', exact: true }).click()
+  await expect.poll(() => cancelled).toBe(4)
+  release()
+  await expect(dialog.getByText('Stopped. Completed results are kept.')).toBeVisible()
+  await expect(dialog.getByText('Probe request failed')).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Close' }).last().click()
+  await page.getByRole('button', { name: 'View last probe' }).click()
+  await expect(
+    dialog.getByRole('listitem').filter({ hasText: 'primary group · model-a' }),
+  ).toContainText('Passed')
+  expect(started).toHaveLength(5)
 })
 
 test('retry single disabled schedule row reconfirms and retains the target', async ({ page }) => {

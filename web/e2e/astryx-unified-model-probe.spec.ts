@@ -18,6 +18,44 @@ const baseResult = {
   tested_at_ms: 1700000000000,
 }
 
+for (const action of ['stop', 'close'] as const) {
+  test(`${action} cancels a running probe without reporting failure`, async ({ page }) => {
+    await mockGroupModels(page, { models: [{ id: 'model-a' }] })
+    let started = 0
+    let cancelled = false
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    page.on('requestfailed', (request) => {
+      if (request.url().endsWith('/api/model-probe')) cancelled = true
+    })
+    await page.route('**/api/model-probe', async (route) => {
+      started += 1
+      await waiting
+      await route
+        .fulfill({ json: { code: 0, message: 'ok', data: { results: [baseResult] } } })
+        .catch(() => {})
+    })
+    await page.goto('/groups/1?tab=models')
+    await page.getByRole('button', { name: 'Probe', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Model liveness' })
+    await expect.poll(() => started).toBe(1)
+    if (action === 'stop') {
+      await dialog.getByRole('button', { name: 'Stop', exact: true }).click()
+    } else {
+      await dialog.getByRole('button', { name: 'Close' }).first().click()
+      await expect(dialog).toBeHidden()
+      await page.getByRole('button', { name: 'View last probe' }).click()
+    }
+    await expect.poll(() => cancelled).toBe(true)
+    release()
+    await expect(dialog.getByText('Stopped. Completed results are kept.')).toBeVisible()
+    await expect(dialog.getByText('Probe request failed')).toHaveCount(0)
+    expect(started).toBe(1)
+  })
+}
+
 for (const scenario of [
   {
     name: 'passed',
