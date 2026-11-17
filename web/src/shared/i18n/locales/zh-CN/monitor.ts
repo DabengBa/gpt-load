@@ -20,6 +20,8 @@ export default {
       loading: '正在测活…',
       requestFailed: '测活请求失败，已完成的结果仍然保留。',
       stopped: '已停止；已完成的结果保留。',
+      stopping: '正在取消未完成的测活…',
+      viewLast: '查看上次测活',
       progress: '已完成 {completed}/{total}',
       summary: '通过 {passed} · 未通过 {failed} · 无法判断 {inconclusive}',
       close: '关闭',

@@ -1090,6 +1090,14 @@ export function GroupModelsTab({
               )}
             />
           </div>
+          {!probe.open && probe.targets.length > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              label={t('monitor.modelProbe.viewLast')}
+              onClick={probe.reopen}
+            />
+          )}
           <ModelProbeDialog
             open={probe.open}
             pending={probe.pending}

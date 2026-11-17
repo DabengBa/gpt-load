@@ -27,6 +27,7 @@ import type { ModelProbeTargetDto } from '@shared/control/resources/model-probe'
 import {
   modelRouteScheduleDetailQueryOptions,
   modelRouteScheduleIndexQueryOptions,
+  type ModelRouteScheduleDetailRequest,
   type ModelRouteScheduleIndexItemDto,
 } from '@shared/control/resources/model-route-schedule'
 import { pagePath } from '@shared/routing/page-routes'
@@ -35,6 +36,7 @@ import { resolveSchedulePriceID } from '@shared/domain/monitor/schedule-price'
 import { listModels } from '@shared/control/resources/models'
 
 import { useAppServices } from '../../app/services'
+import { useT } from '../../app/i18n'
 import { ModelProbeDialog } from '../models/ModelProbeDialog'
 import { useModelProbe } from '../models/use-model-probe'
 import {
@@ -166,6 +168,7 @@ export function SchedulePanel({
   onOpenPrice,
 }: SchedulePanelProps) {
   const { apiClient } = useAppServices()
+  const t = useT()
   const navigate = useNavigate()
 
   const [selectedModel, setSelectedModel] = useState(externalModel)
@@ -288,26 +291,41 @@ export function SchedulePanel({
   }
 
   const probe = useModelProbe()
+  const [probeContext, setProbeContext] = useState<ModelRouteScheduleDetailRequest>()
+  const historicalProbe =
+    probeContext !== undefined && probeContext.external_model !== selectedModel
+  const probeDetailQuery = useQuery(
+    modelRouteScheduleDetailQueryOptions(
+      apiClient,
+      probe.open && historicalProbe ? probeContext : undefined,
+    ),
+  )
+  const probeGroups = historicalProbe ? probeDetailQuery.data?.groups : detailQuery.data?.groups
   const probeDisabledGroupIds = [
     ...new Set([
       ...probe.disabledGroupIds,
       ...probe.targets
-        .filter((target) =>
-          detailQuery.data?.groups.some(
-            (group) => group.group_id === target.group_id && !group.enabled,
-          ),
-        )
+        .filter((target) => {
+          const group = probeGroups?.find((candidate) => candidate.group_id === target.group_id)
+          // Until the historical context has been refreshed, do not bypass confirmation.
+          return historicalProbe &&
+            (probeDetailQuery.isFetching || probeDetailQuery.isError || !group)
+            ? true
+            : group?.enabled === false
+        })
         .map((target) => target.group_id),
     ]),
   ]
 
   function probeRow(groupID: number, modelID: string, disabled: boolean): void {
+    setProbeContext(detailRequest)
     void probe.start([{ group_id: groupID, model: modelID }], {
       disabledGroupIds: disabled ? [groupID] : [],
     })
   }
 
   function probeRows(targets: ModelProbeTargetDto[], disabledGroupIds: number[]): void {
+    setProbeContext(detailRequest)
     void probe.start(targets, { disabledGroupIds })
   }
 
@@ -481,6 +499,14 @@ export function SchedulePanel({
       </div>
 
       <div {...stylex.props(styles.detail)}>
+        {!probe.open && probe.targets.length > 0 && (
+          <Button
+            variant="secondary"
+            size="sm"
+            label={t('monitor.modelProbe.viewLast')}
+            onClick={probe.reopen}
+          />
+        )}
         <ContentPanel>
           {priceError && (
             <Banner

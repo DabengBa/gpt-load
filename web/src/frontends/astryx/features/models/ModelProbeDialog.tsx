@@ -564,9 +564,6 @@ export function ModelProbeDialog({
   const hasChanges = changes.size > 0
 
   function setOpen(next: boolean): void {
-    // Classic setOpen + dismissible guard: closing is blocked while pending
-    // (Escape, scrim, header X, and the footer Close all land here).
-    if (!next && pending) return
     onOpenChange(next)
   }
 
@@ -679,7 +676,14 @@ export function ModelProbeDialog({
                   </div>
                 )}
                 {failed && <Banner status="error" title={t('monitor.modelProbe.requestFailed')} />}
-                {stopped && <Banner status="warning" title={t('monitor.modelProbe.stopped')} />}
+                {stopped && (
+                  <Banner
+                    status="warning"
+                    title={t(
+                      pending ? 'monitor.modelProbe.stopping' : 'monitor.modelProbe.stopped',
+                    )}
+                  />
+                )}
                 {total > 1 && (
                   <Banner
                     status="warning"
@@ -990,6 +994,7 @@ export function ModelProbeDialog({
                   size="sm"
                   label={t('monitor.modelProbe.stop')}
                   onClick={onStop}
+                  isDisabled={stopped}
                 />
               )}
               {!pending && total === 1 && (
@@ -1006,7 +1011,6 @@ export function ModelProbeDialog({
               <Button
                 variant="secondary"
                 size="sm"
-                isDisabled={pending}
                 label={t('monitor.modelProbe.close')}
                 onClick={() => setOpen(false)}
               />
