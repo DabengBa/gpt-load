@@ -31,6 +31,11 @@ The group detail view uses full-width sections and a unified save action for
 settings and model edits. Site access is maintained in its own section. On
 mobile, the save controls stay in document flow so they do not cover the form.
 
+In model maintenance, administrators can edit the model ID of an existing row
+directly and save it without removing and re-adding the row. An empty model ID
+cannot be saved. The retained row keeps its client alias and route settings;
+its read-only test alias follows the [test alias lifecycle](feature.model-test-alias).
+
 Saved model rows expose [Actual Request Testing](feature.realistic-probe) for
 supported generation routes, alongside the existing diagnostic probe.
 

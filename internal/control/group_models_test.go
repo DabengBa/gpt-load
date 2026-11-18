@@ -140,8 +140,10 @@ func TestGroupModelsGenerateAndPreserveReadOnlyTestAlias(t *testing.T) {
 	fixture := newServiceFixture(t)
 	created, err := fixture.service.CreateGroup(t.Context(), GroupCreateRequest{
 		Name: stringPointer("test-alias-control"), ChannelID: channel.OpenAICompatible,
-		Params:      json.RawMessage(`{"base_url":"https://test-alias-control.example/v1"}`),
-		Models:      optionalGroupModels{Set: true, Values: []GroupModel{{ID: "upstream-model"}}},
+		Params: json.RawMessage(`{"base_url":"https://test-alias-control.example/v1"}`),
+		Models: optionalGroupModels{Set: true, Values: []GroupModel{{
+			ID: "upstream-model", Alias: "public-model", AliasEnabled: true, Weight: intPointer(3), Priority: intPointer(2),
+		}}},
 		Credentials: "sk-test-alias-control",
 	})
 	if err != nil {
@@ -158,7 +160,7 @@ func TestGroupModelsGenerateAndPreserveReadOnlyTestAlias(t *testing.T) {
 
 	updated, err := fixture.service.UpdateGroupModels(t.Context(), created.GroupID, GroupModelsUpdateRequest{
 		Models: optionalGroupModels{Set: true, Values: []GroupModel{{
-			ID: "upstream-model", EntryID: first.Items[0].EntryID, TestAlias: "client-value",
+			ID: "renamed-model", Alias: "public-model", AliasEnabled: true, EntryID: first.Items[0].EntryID, TestAlias: "client-value",
 		}}},
 	})
 	if err != nil {
@@ -177,6 +179,11 @@ func TestGroupModelsGenerateAndPreserveReadOnlyTestAlias(t *testing.T) {
 	}
 	if len(stored) != 1 || stored[0].TestAlias != testAlias {
 		t.Fatalf("stored models = %#v, want test alias %q", stored, testAlias)
+	}
+	if stored[0].ID != "renamed-model" || stored[0].EntryID != first.Items[0].EntryID ||
+		stored[0].Alias != "public-model" || stored[0].Weight == nil || *stored[0].Weight != 3 ||
+		stored[0].Priority == nil || *stored[0].Priority != 2 {
+		t.Fatalf("renamed model did not preserve its identity and configuration: %#v", stored[0])
 	}
 	// 无关设置更新不得改动模型测试别名（scope 证据项）。
 	if _, err := fixture.service.UpdateGroupSettings(t.Context(), created.GroupID, GroupSettingsUpdateRequest{

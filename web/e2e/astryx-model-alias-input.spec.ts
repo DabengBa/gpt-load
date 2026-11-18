@@ -2,6 +2,35 @@ import { expect, test } from '@playwright/test'
 import { mockGroupFingerprint } from './fixtures/group-fingerprint-mock'
 import { mockGroupModels } from './fixtures/group-models-mock'
 
+test('existing model ID can be edited and saved without losing its configuration', async ({
+  page,
+}) => {
+  const { puts } = await mockGroupModels(page, {
+    models: [{ id: 'model-old', alias: 'public', alias_enabled: true, weight: 3, priority: 2 }],
+  })
+  await page.goto('/groups/1?tab=models')
+  const row = page.getByTestId('model-alias-editor__record').first()
+  const id = row.getByLabel('Model ID', { exact: true })
+  const save = page.getByRole('button', { name: 'Save settings', exact: true })
+  await expect(id).toHaveValue('model-old')
+  await id.fill('')
+  await expect(save).toBeDisabled()
+  await id.fill('model-new')
+  await expect(save).toBeEnabled()
+  await save.click()
+  await expect.poll(() => puts.length).toBe(1)
+  expect(puts[0]).toMatchObject({
+    models: [{ id: 'model-new', alias: 'public', entry_id: 'e000000000000' }],
+  })
+  await expect(id).toHaveValue('model-new')
+  await page.reload()
+  await expect(id).toHaveValue('model-new')
+  await expect(row.getByLabel('Client alias for model-new')).toHaveValue('public')
+  await expect(row.getByTestId('group-models__test-alias')).toHaveText('tst000')
+  await expect(row.getByLabel('Weight', { exact: true })).toHaveValue('3')
+  await expect(row.getByLabel('Priority', { exact: true })).toHaveValue('2')
+})
+
 test('model alias is an always available text field, with no checkbox', async ({ page }) => {
   await mockGroupFingerprint(page)
   await page.goto('/groups/1?tab=models')

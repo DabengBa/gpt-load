@@ -23,6 +23,9 @@ actual-request workspace.
   of probes. Each target identifies the group and model to test. A disabled
   group can be explicitly tested after confirmation; that does not make it
   eligible for ordinary routing.
+- In group model maintenance, a row cannot be probed while its model ID differs
+  from the saved ID. Saving the new ID or restoring the saved ID makes the row
+  eligible for probing again.
 - The management service selects a credential from the specified group and
   uses a code-owned protocol preset. Supported data protocols retain their own
   probe templates. The group's matching parameter overrides and model reasoning

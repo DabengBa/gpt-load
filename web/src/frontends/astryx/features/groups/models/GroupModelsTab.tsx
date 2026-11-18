@@ -590,6 +590,7 @@ export function GroupModelsTab({
     setDraft((current) =>
       appendSelectedCandidates(current, selectedCandidates, (candidate) => ({
         id: candidate.id,
+        editable_id: true,
         name: candidate.name,
         sources: [...candidate.sources],
         alias: '',
@@ -1009,7 +1010,9 @@ export function GroupModelsTab({
                     </label>
                   </div>
 
-                  {item.pricing_status === 'pending' && item.price_id !== undefined ? (
+                  {item.pricing_status === 'pending' &&
+                  item.price_id !== undefined &&
+                  savedModelIDByKey.get(item.key) === item.id.trim() ? (
                     <RouteLink
                       to={`${pagePath('schedule')}${stringifySharedRouteSearch({ selected_price_id: item.price_id })}`}
                       {...stylex.props(styles.pricingLink)}
