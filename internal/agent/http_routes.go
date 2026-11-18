@@ -45,7 +45,7 @@ func (server *Server) Module() httproute.Module {
 		Prefix:            APIPrefix,
 		NamespacePrefixes: []string{NamespacePrefix},
 		Authenticate:      server.authenticate(),
-		Routes: []httproute.Route{
+		Routes: append([]httproute.Route{
 			{
 				Name:     "capabilities",
 				Methods:  []string{http.MethodGet},
@@ -112,7 +112,7 @@ func (server *Server) Module() httproute.Module {
 				Path:     "/control-operations/:" + operationIDRouteParam,
 				Handlers: gin.HandlersChain{server.handleGetControlOperation},
 			},
-		},
+		}, server.modelRouteHTTPRoutes()...),
 		NotFound:         agentRouteNotFound,
 		MethodNotAllowed: agentMethodNotAllowed,
 	}
@@ -128,6 +128,10 @@ func (server *Server) handleCapabilities(c *gin.Context) {
 		return
 	}
 	features := server.features
+	endpoints := agentEndpointCapabilities(features)
+	if features.ModelRoutes {
+		endpoints = append(endpoints, modelRouteCapabilities()...)
+	}
 	response.SuccessI18n(c, "common.success", Capabilities{
 		SchemaVersion: SchemaVersion,
 		Server: ServerIdentity{
@@ -135,7 +139,7 @@ func (server *Server) handleCapabilities(c *gin.Context) {
 			SnapshotRevision: server.snapshotRevision(),
 		},
 		Caller:    callerIdentity(principal),
-		Endpoints: agentEndpointCapabilities(features),
+		Endpoints: endpoints,
 		Limits: Limits{
 			DefaultPageSize: DefaultPageLimit,
 			MaxPageSize:     MaxPageLimit,
@@ -205,6 +209,7 @@ func agentEndpointCapabilities(features Features) []EndpointCapability {
 			SideEffects:   false,
 		},
 	}
+
 	if !features.ChangeProposals {
 		return endpoints
 	}

@@ -84,7 +84,6 @@ func projectRequestSummary(record requestlog.Record) (RequestSummary, error) {
 func projectAttempt(
 	requestID string,
 	attempt requestlog.Attempt,
-	scrub func(string) string,
 ) AttemptView {
 	return AttemptView{
 		AttemptRef:        logicalAttemptRef(requestID, attempt.Sequence),
@@ -109,8 +108,8 @@ func projectAttempt(
 		Action:            string(attempt.Action),
 		WillRetry:         attempt.WillRetry,
 		ErrorCode:         attempt.ErrorCode,
-		ErrorSummary:      scrub(attempt.ErrorSummary),
-		Committed:         attempt.Committed,
+
+		Committed: attempt.Committed,
 	}
 }
 

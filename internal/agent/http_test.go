@@ -110,6 +110,42 @@ func agentHTTPTestEngine(t *testing.T, server *Server) *gin.Engine {
 	return engine
 }
 
+func TestAgentRequestDiagnosticsExcludeUpstreamErrorText(t *testing.T) {
+	if err := i18n.Init(); err != nil {
+		t.Fatal(err)
+	}
+	store, _ := newAgentTestStore(t)
+	_, secret := createTestCredential(t, store, CredentialCreateInput{
+		Name: "diagnostics", Scopes: []Scope{ScopeDiagnosticsRead},
+	})
+	const upstreamURL = "https://private-provider.example/v1"
+	const upstreamKey = "opaque-provider-key"
+	record := requestlog.Record{
+		UsageState: usage.StateNotApplicable, CostState: pricing.CostStateNotApplicable,
+		PricingCompleteness: pricing.CompletenessNotApplicable,
+		RequestID:           "11111111-1111-4111-8111-111111111111",
+		ErrorSummary:        "request to " + upstreamURL + " rejected",
+		Attempts:            []requestlog.Attempt{{Sequence: 1, ErrorSummary: "provider rejected " + upstreamKey}},
+	}
+	engine := agentHTTPTestEngine(t, NewServer(Dependencies{
+		Credentials: store,
+		RequestLogs: &agentHTTPRequestLogs{record: record, listPage: requestlog.Page{Items: []requestlog.Record{record}}},
+	}))
+	for _, path := range []string{"/requests", "/requests/" + record.RequestID} {
+		request := httptest.NewRequest(http.MethodGet, APIPrefix+path, nil)
+		request.Header.Set("Authorization", "Bearer "+secret)
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, request)
+		body := recorder.Body.String()
+		if recorder.Code != http.StatusOK || !strings.Contains(body, record.RequestID) {
+			t.Fatalf("%s: expected request diagnostics, got %d %s", path, recorder.Code, body)
+		}
+		if strings.Contains(body, upstreamURL) || strings.Contains(body, upstreamKey) {
+			t.Fatalf("%s: response disclosed upstream connection information", path)
+		}
+	}
+}
+
 func TestAgentEvidenceEndpointRedactsCaptureContentAndRejectsAdminToken(t *testing.T) {
 	if err := i18n.Init(); err != nil {
 		t.Fatalf("i18n.Init() error = %v", err)

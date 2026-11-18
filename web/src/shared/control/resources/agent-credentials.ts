@@ -32,6 +32,7 @@ export const agentCredentialScopes = [
   'diagnostics:read',
   'changes:propose',
   'changes:apply',
+  'routes:write',
 ] as const satisfies readonly AgentCredentialScope[]
 
 export interface CreateAgentCredentialRequest {

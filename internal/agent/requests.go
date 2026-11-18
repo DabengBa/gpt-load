@@ -43,7 +43,7 @@ func (server *Server) handleListRequests(c *gin.Context) {
 			writeAgentServiceError(c, "agent_list_requests", app_errors.ErrInternalServer)
 			return
 		}
-		summary.ErrorSummary = server.scrub(record.ErrorSummary)
+
 		items = append(items, summary)
 	}
 	var nextCursor *string
@@ -90,10 +90,10 @@ func (server *Server) handleGetRequest(c *gin.Context) {
 		writeAgentServiceError(c, "agent_get_request", app_errors.ErrInternalServer)
 		return
 	}
-	summary.ErrorSummary = server.scrub(record.ErrorSummary)
+
 	attempts := make([]AttemptView, 0, len(record.Attempts))
 	for _, attempt := range record.Attempts {
-		attempts = append(attempts, projectAttempt(record.RequestID, attempt, server.scrub))
+		attempts = append(attempts, projectAttempt(record.RequestID, attempt))
 	}
 	evidence, err := server.buildEvidence(c.Request.Context(), record.RequestID, record.Attempts)
 	if err != nil {

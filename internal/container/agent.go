@@ -9,7 +9,7 @@ import (
 	"gpt-load/internal/debugcapture"
 	"gpt-load/internal/platform/config"
 	"gpt-load/internal/platform/encryption"
-	"gpt-load/internal/platform/redact"
+
 	"gpt-load/internal/platform/version"
 	"gpt-load/internal/requestlog"
 	"gpt-load/internal/state"
@@ -29,7 +29,7 @@ func newAgentServer(
 	credentials *agent.CredentialStore,
 	requestLogs *requestlog.Service,
 	manager *state.Manager,
-	redactor *redact.Redactor,
+
 	optional agentOptionalDependencies,
 ) *agent.Server {
 	dependencies := agent.Dependencies{
@@ -38,9 +38,9 @@ func newAgentServer(
 		RequestLogStats: requestLogs,
 		Usage:           requestLogs,
 		Snapshots:       manager,
-		Redactor:        redactor,
-		Version:         version.Version,
-		Features:        agent.Features{},
+
+		Version:  version.Version,
+		Features: agent.Features{},
 	}
 	if optional.DebugCaptureStore != nil {
 		dependencies.Evidence = optional.DebugCaptureStore
@@ -74,6 +74,7 @@ func configureAgent(dependencyContainer *dig.Container) error {
 	) error {
 		service.SetAgentCredentialStore(credentials)
 		server.SetChangeProposalService(service)
+		server.SetModelRouteService(service)
 		return nil
 	})
 }

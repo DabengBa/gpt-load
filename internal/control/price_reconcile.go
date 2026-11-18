@@ -95,7 +95,7 @@ func loadPriceReferenceSnapshot(tx *gorm.DB) (priceReferenceSnapshot, error) {
 func buildPriceReferenceSnapshot(groups []models.Group) (priceReferenceSnapshot, error) {
 	references := make(map[pricing.Identity]referencedPrice)
 	for _, group := range groups {
-		var groupModels []GroupModel
+		var groupModels []groupModelEntry
 		if err := decodeGroupDiscoveryJSON(group.Models, &groupModels); err != nil {
 			return priceReferenceSnapshot{}, fmt.Errorf("decode group price references: %w", app_errors.ErrInternalServer)
 		}

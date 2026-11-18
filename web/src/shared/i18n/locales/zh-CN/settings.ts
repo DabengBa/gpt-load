@@ -73,6 +73,8 @@ export default {
         scopeProposeHint: '起草模型路由变更提案，仍需管理员批准。',
         scopeApply: '执行变更',
         scopeApplyHint: '在管理员批准后执行提案。',
+        scopeRoutesWrite: '编辑模型路由',
+        scopeRoutesWriteHint: '无需逐笔审批即可新增、修改和删除模型路由。',
         expiration: '过期时间',
         expirationNever: '永不过期',
         expirationSpecified: '指定时间',
