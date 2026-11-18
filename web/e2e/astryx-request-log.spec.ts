@@ -308,6 +308,75 @@ test('display parity: layered route/protocol rows and labeled cache rate', async
   await expect(row.getByTestId('logs-list__cache-rate')).toContainText('Cache hit rate 98.0%')
 })
 
+test('list route shortcuts preserve filtering and hide unavailable links', async ({ page }) => {
+  await installRequestLogDisplayRoutes(page)
+  await openLogs(page)
+  const first = records(page).nth(0)
+  const group = first.getByTestId('log-route-identity__group-link')
+  const provider = first.getByTestId('log-route-identity__provider')
+  await expect(group).toHaveAttribute('href', '/groups/1')
+  await expect(provider).toHaveAttribute('href', PROVIDER_URL)
+  await expect(provider).toHaveAttribute('target', '_blank')
+  await expect(provider).toHaveAttribute('rel', /noopener/u)
+  await expect(records(page).nth(1).getByTestId('log-route-identity__provider')).toHaveCount(0)
+  for (const index of [2, 3]) {
+    await expect(
+      records(page).nth(index).getByTestId('log-route-identity__group-link'),
+    ).toHaveCount(0)
+    await expect(records(page).nth(index).getByTestId('log-route-identity__provider')).toHaveCount(
+      0,
+    )
+  }
+  await group.click()
+  await expect(page).toHaveURL(/\/groups\/1/u)
+})
+
+test('mobile route shortcuts remain usable with a long group name', async ({ page, context }) => {
+  await page.setViewportSize({ width: 390, height: 1100 })
+  await installRequestLogDisplayRoutes(page)
+  await page.route('**/api/groups/options', async (route) => {
+    await route.fulfill({
+      json: {
+        code: 0,
+        message: 'OK',
+        data: [
+          {
+            id: 1,
+            name: 'alpha-very-long-group-name-repeated-for-narrow-screen-layout',
+            channel_id: 'openai_compatible',
+            params: {},
+            provider_url: PROVIDER_URL,
+            enabled: true,
+            models: [],
+          },
+        ],
+      },
+    })
+  })
+  await context.route(`${PROVIDER_URL}/`, (route) => route.fulfill({ body: 'provider' }))
+  await openLogs(page)
+  const row = records(page).first()
+  const group = row.getByTestId('log-route-identity__group-link')
+  const provider = row.getByTestId('log-route-identity__provider')
+  for (const link of [group, provider]) {
+    await expect(link).toBeVisible()
+    const box = (await link.boundingBox())!
+    expect(box.width).toBeGreaterThanOrEqual(44)
+    expect(box.height).toBeGreaterThanOrEqual(44)
+    expect(box.x + box.width).toBeLessThanOrEqual(390)
+  }
+  const popupPromise = page.waitForEvent('popup')
+  await provider.click()
+  const popup = await popupPromise
+  await popup.waitForLoadState()
+  expect(popup.url()).toBe(`${PROVIDER_URL}/`)
+  await expect(page).toHaveURL(/\/logs$/u)
+  await expect(page.getByRole('dialog', { name: 'Request log details' })).toHaveCount(0)
+  await popup.close()
+  await group.click()
+  await expect(page).toHaveURL(/\/groups\/1/u)
+})
+
 test('route identity: in-place filters plus drawer maintenance and provider links', async ({
   page,
 }) => {

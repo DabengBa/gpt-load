@@ -38,11 +38,11 @@ opens at the relevant place instead of requiring a second search.
 ### From request logs to group maintenance
 
 - In a request-log list, the group name remains the control for narrowing the
-  log list to that group. The list route cell does not carry a separate
-  maintenance link.
-- The request-log detail view exposes a maintenance arrow for a group only
-  after the group identity has been confirmed to exist, together with the
-  configured provider website link.
+  log list to that group. A separate maintenance arrow and configured provider
+  website link appear beside it when available.
+- Both the request-log list and detail view expose a maintenance arrow for a
+  group only after its identity has been confirmed to exist. The configured
+  provider website opens in a new tab.
 - Long route labels truncate within their text area. The maintenance arrow and
   provider website link remain on the same route line and stay available
   independently of the truncated text.
@@ -75,8 +75,8 @@ opens at the relevant place instead of requiring a second search.
 
 - **Role and purpose:** An administrator wants to change the group associated
   with a visible request or inspect its configuration.
-- **Entry and action:** Open request logs, select a record so its detail view
-  opens, then use the maintenance action beside the resolved group.
+- **Entry and action:** Open request logs and use the maintenance action beside
+  the resolved group in the list, or open the record and use it in the detail.
 - **Expected result:** The group maintenance page opens for that group, while
   the group-name control in the list continues to filter logs. With a long
   route name, the maintenance arrow and any configured provider website link
