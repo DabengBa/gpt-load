@@ -24,6 +24,7 @@ export function createModelDraft(items: readonly GroupModelItemDto[]): ModelDraf
   return items.map((item, index) => {
     const draft: ModelDraftItem = {
       id: item.id,
+      editable_id: true,
       name: item.id,
       sources: [],
       alias: item.alias,

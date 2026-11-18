@@ -46,13 +46,9 @@
 }
 
 .group-model-rows
-  :is(
-    [data-model-id-index],
-    [data-alias-input-index],
-    [data-model-weight-index],
-    [data-model-priority-index],
-    select
-  ):not(:disabled):not([aria-invalid='true']) {
+  :is([data-alias-input-index], [data-model-weight-index], [data-model-priority-index], select):not(
+    :disabled
+  ):not([aria-invalid='true']) {
   border-color: transparent;
   background-color: transparent;
 }
@@ -137,6 +133,11 @@
 }
 
 @media (max-width: 860px) {
+  /* Keep the Model ID input and its validation indicator clear of the remove button. */
+  .group-model-rows span:has(> [data-model-id-index]) {
+    width: calc(100% - var(--touch-target));
+  }
+
   .group-model-rows [data-testid='model-alias-editor__record'] > [role='cell']:last-child button {
     width: var(--touch-target);
     height: var(--touch-target);

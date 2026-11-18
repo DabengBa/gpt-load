@@ -2,6 +2,37 @@ import { expect, test } from '@playwright/test'
 
 import { mockGroupFingerprint } from './fixtures/group-fingerprint-mock'
 
+for (const width of [1440, 375]) {
+  test(`existing model ID looks editable at rest at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await mockGroupFingerprint(page)
+    await page.goto('/groups/1?tab=models')
+    await page.mouse.move(0, 0)
+
+    const row = page.getByTestId('model-alias-editor__record').first()
+    const id = row.getByRole('textbox', { name: 'Model ID', exact: true })
+    const transparent = 'rgba(0, 0, 0, 0)'
+    await expect(id).toHaveValue('gpt-5.4')
+    await expect(id).toBeEditable()
+    await expect(id).not.toBeFocused()
+    await expect(id).toHaveCSS('border-top-style', 'solid')
+    await expect(id).not.toHaveCSS('border-top-color', transparent)
+    await expect(id).not.toHaveCSS('background-color', transparent)
+
+    if (width === 375) {
+      const remove = row.getByRole('button', { name: 'Remove model gpt-5.4' })
+      const [inputBox, removeBox] = await Promise.all([id.boundingBox(), remove.boundingBox()])
+      expect(inputBox!.x + inputBox!.width).toBeLessThan(removeBox!.x)
+    }
+
+    for (const name of ['Client alias for gpt-5.4', 'Weight', 'Priority']) {
+      const field = row.getByRole('textbox', { name, exact: true })
+      await expect(field).toHaveCSS('border-top-color', transparent)
+      await expect(field).toHaveCSS('background-color', transparent)
+    }
+  })
+}
+
 for (const width of [1440, 900, 375]) {
   test(`test alias has its own aligned column at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 })

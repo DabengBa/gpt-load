@@ -1,5 +1,32 @@
 # Project Learnings
 
+## [LRN-20261118-001] best_practice
+
+**Logged**: 2026-11-18T10:59:05+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: frontend
+
+### Summary
+允许修改分组模型 ID 时，保留配置条目的 `entry_id`，但不要用旧模型的 `price_id` 给新草稿 ID 生成价格链接。
+
+### Details
+计划审议发现，改名尚未保存时，草稿已显示新模型 ID，价格元数据却仍来自已保存的旧模型。价格行按渠道和模型匹配，不按分组条目的 `entry_id` 匹配。当前实现只在草稿 ID 与该行已保存 ID 一致时显示价格链接，保存后使用服务端返回的价格数据。
+
+### Suggested Action
+以后让已有条目的名称可编辑时，区分随条目保留的配置和依赖已保存名称的链接。回归测试分别核验浏览器请求沿用 `entry_id`、真实服务改名后保留条目配置；mock 重载不替代真实持久化验证。
+
+### Metadata
+- Source: 分组模型 ID 编辑计划审议及 U001 结果（`.tmp/edit-group-model-id_run/plan.md`、`.tmp/edit-group-model-id_run/units/U001/result.md`）
+- Related Files: `web/src/frontends/astryx/features/groups/models/GroupModelsTab.tsx`, `web/e2e/astryx-model-alias-input.spec.ts`, `internal/control/group_models_test.go`
+- See Also: LRN-20261107-003（同一稳定条目标识，用于失败写入恢复，非本条的改名场景）
+
+### Context Maintenance
+- Revalidation: 价格索引或分组模型保存机制改变时，核对链接是否仍指向正确的已保存价格行，并复验改名后配置是否保留。
+- Validation: U001 的 Playwright spec 4 项通过，真实服务 Go 测试验证数据库改名及配置保留；价格链接条件经源码核对，未单独进行浏览器验证。
+
+---
+
 ## [LRN-20261110-001] correction
 
 **Logged**: 2026-11-10T20:52:52+08:00
