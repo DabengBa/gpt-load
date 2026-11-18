@@ -3,12 +3,11 @@ module gpt-load
 go 1.27.3
 
 require (
-	github.com/Ikaleio/lm-detector/sdk/go v0.2.1-0.20261112185343-2c61f8f836de
+	github.com/Ikaleio/lm-detector/sdk/go v0.2.1-0.20261118004648-33fb43f26670
 	github.com/andybalholm/brotli v1.2.8
 	github.com/buger/jsonparser v1.6.1
 	github.com/gin-gonic/gin v1.12.0
 	github.com/glebarez/sqlite v1.11.0
-	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
 	github.com/klauspost/compress v1.20.3
@@ -70,6 +69,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

@@ -10,7 +10,7 @@ import (
 	lmfpd "github.com/Ikaleio/lm-detector/sdk/go"
 )
 
-// Data and SDK are pinned to upstream commit 2c61f8f836de93d3ce60a9f76f8b8ff9e15011ac.
+// Data and SDK are pinned to upstream commit 33fb43f26670be0ed7817ab13e5c4c4731ccb76a.
 //
 //go:embed lmdata/unified_bank.json
 var modelTraceBank []byte
