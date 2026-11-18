@@ -173,6 +173,10 @@ const scopeLabels: Record<AgentCredentialScope, { label: MessageId; hint: Messag
     label: 'settings.credentials.agent.scopeApply',
     hint: 'settings.credentials.agent.scopeApplyHint',
   },
+  'routes:write': {
+    label: 'settings.credentials.agent.scopeRoutesWrite',
+    hint: 'settings.credentials.agent.scopeRoutesWriteHint',
+  },
 }
 
 type AgentCredentialRow = AgentCredentialDto & Record<string, unknown>
@@ -228,7 +232,9 @@ export function AgentCredentialsPanel() {
           {record.scopes.map((scope) => (
             <Badge
               key={scope}
-              variant={scope === 'diagnostics:read' ? 'neutral' : 'warning'}
+              variant={
+                scope === 'changes:propose' || scope === 'changes:apply' ? 'warning' : 'neutral'
+              }
               label={t(scopeLabels[scope].label)}
             />
           ))}

@@ -477,7 +477,8 @@ export interface AccessKeyRevealDto {
   revealed_at_ms: number
 }
 
-export type AgentCredentialScope = 'diagnostics:read' | 'changes:propose' | 'changes:apply'
+export type AgentCredentialScope =
+  'diagnostics:read' | 'changes:propose' | 'changes:apply' | 'routes:write'
 
 export interface AgentCredentialDto {
   id: number

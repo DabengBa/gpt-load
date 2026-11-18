@@ -100,6 +100,7 @@ type Limits struct {
 type Features struct {
 	EvidenceRaw     bool `json:"evidence_raw"`
 	ChangeProposals bool `json:"change_proposals"`
+	ModelRoutes     bool `json:"model_routes"`
 }
 
 // PageInfo describes pagination without inventing a total count.
@@ -270,7 +271,8 @@ type RouteDetailView struct {
 
 // RouteEntryView is one configured routing entry.
 type RouteEntryView struct {
-	GroupID         uint   `json:"group_id"`
+	GroupID uint `json:"group_id"`
+	// Retained for wire compatibility; group names can be upstream hostnames.
 	GroupName       string `json:"group_name"`
 	EntryID         string `json:"entry_id"`
 	UpstreamModelID string `json:"upstream_model_id"`

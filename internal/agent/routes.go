@@ -171,7 +171,6 @@ func buildRouteDetail(
 		seen[key] = struct{}{}
 		entries = append(entries, RouteEntryView{
 			GroupID:         target.GroupID,
-			GroupName:       groupName(snapshot, target.GroupID),
 			EntryID:         target.EntryID,
 			UpstreamModelID: target.UpstreamModelID,
 			RouteMode:       string(target.Mode),
@@ -200,20 +199,4 @@ func buildRouteDetail(
 		SnapshotRevision: snapshot.Revision,
 		Detail:           detail,
 	}
-}
-
-func groupName(snapshot *state.ConfigSnapshot, groupID uint) string {
-	if snapshot == nil {
-		return ""
-	}
-	if catalog, exists := snapshot.GroupCatalog[groupID]; exists {
-		return catalog.Name
-	}
-	if group, exists := snapshot.Groups[groupID]; exists {
-		return group.Name
-	}
-	if group, exists := snapshot.DisabledGroups[groupID]; exists {
-		return group.Name
-	}
-	return ""
 }

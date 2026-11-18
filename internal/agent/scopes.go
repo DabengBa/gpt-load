@@ -1,7 +1,6 @@
 // Package agent implements the control-owned Agent machine surface: an
-// independently authenticated, redacted, read-only canonical projection of
-// existing request logs, evidence metadata, route configuration, health and
-// usage facts. It never creates a second fact store.
+// independently authenticated surface for redacted diagnostics and scoped
+// model-route maintenance. It never creates a second fact store.
 package agent
 
 // Scope is one explicitly grantable Agent capability. Unknown or empty scopes
@@ -15,6 +14,8 @@ const (
 	ScopeChangesPropose Scope = "changes:propose"
 	// ScopeChangesApply grants applying an already approved change proposal.
 	ScopeChangesApply Scope = "changes:apply"
+	// ScopeRoutesWrite grants configuring model-route entries without a proposal.
+	ScopeRoutesWrite Scope = "routes:write"
 )
 
 // GrantableScopes is the complete, ordered set of scopes an administrator may
@@ -23,9 +24,10 @@ var GrantableScopes = []Scope{
 	ScopeDiagnosticsRead,
 	ScopeChangesPropose,
 	ScopeChangesApply,
+	ScopeRoutesWrite,
 }
 
-// Valid reports whether the scope is one of the three grantable values.
+// Valid reports whether the scope is grantable.
 func (scope Scope) Valid() bool {
 	for _, candidate := range GrantableScopes {
 		if candidate == scope {

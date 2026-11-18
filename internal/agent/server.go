@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"gpt-load/internal/debugcapture"
-	"gpt-load/internal/platform/redact"
+
 	"gpt-load/internal/platform/version"
 	"gpt-load/internal/requestlog"
 	"gpt-load/internal/state"
@@ -56,10 +56,10 @@ type Dependencies struct {
 	Evidence        EvidenceReader
 	EvidenceHealth  EvidenceHealthReader
 	Snapshots       SnapshotProvider
-	Redactor        *redact.Redactor
-	Version         string
-	Features        Features
-	Now             func() time.Time
+
+	Version  string
+	Features Features
+	Now      func() time.Time
 }
 
 // Server implements the control-owned Agent HTTP module.
@@ -71,12 +71,13 @@ type Server struct {
 	evidence        EvidenceReader
 	evidenceHealth  EvidenceHealthReader
 	snapshots       SnapshotProvider
-	redactor        *redact.Redactor
+
 	version         string
 	features        Features
 	now             func() time.Time
 	startedAt       time.Time
 	changeProposals ChangeProposalService
+	modelRoutes     ModelRouteService
 }
 
 // NewServer builds the Agent surface; missing optional readers degrade the
@@ -87,10 +88,7 @@ func NewServer(deps Dependencies) *Server {
 	if now == nil {
 		now = time.Now
 	}
-	redactor := deps.Redactor
-	if redactor == nil {
-		redactor = redact.New()
-	}
+
 	buildVersion := deps.Version
 	if buildVersion == "" {
 		buildVersion = version.Version
@@ -104,11 +102,11 @@ func NewServer(deps Dependencies) *Server {
 		evidence:        deps.Evidence,
 		evidenceHealth:  deps.EvidenceHealth,
 		snapshots:       deps.Snapshots,
-		redactor:        redactor,
-		version:         buildVersion,
-		features:        deps.Features,
-		now:             now,
-		startedAt:       now().UTC(),
+
+		version:   buildVersion,
+		features:  deps.Features,
+		now:       now,
+		startedAt: now().UTC(),
 	}
 
 	if deps.ChangeProposals != nil {
@@ -145,11 +143,4 @@ func (server *Server) uptimeSeconds() int64 {
 		uptime = 0
 	}
 	return int64(uptime / time.Second)
-}
-
-func (server *Server) scrub(text string) string {
-	if text == "" || server == nil || server.redactor == nil {
-		return text
-	}
-	return server.redactor.String(text)
 }

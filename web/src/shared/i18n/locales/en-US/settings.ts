@@ -75,6 +75,8 @@ export default {
         scopeProposeHint: 'Draft model-route change proposals. An administrator still approves.',
         scopeApply: 'Apply changes',
         scopeApplyHint: 'Execute proposals after administrator approval.',
+        scopeRoutesWrite: 'Edit model routes',
+        scopeRoutesWriteHint: 'Add, update, and delete model routes without per-change approval.',
         expiration: 'Expiration',
         expirationNever: 'Never expires',
         expirationSpecified: 'Specific time',
