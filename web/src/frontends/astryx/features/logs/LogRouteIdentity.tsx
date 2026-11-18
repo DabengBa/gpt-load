@@ -128,6 +128,12 @@ const styles = stylex.create({
     borderRadius: 'var(--radius-control)',
     color: { default: 'var(--color-text-faint)', ':hover': 'var(--color-action)' },
   },
+  compactActionIcon: {
+    width: { '@media (max-width: 860px)': 44 },
+    height: { '@media (max-width: 860px)': 44 },
+    minWidth: { '@media (max-width: 860px)': 44 },
+    minHeight: { '@media (max-width: 860px)': 44 },
+  },
   groupLink: {
     color: { ':focus-visible': 'var(--color-action)' },
   },
@@ -340,36 +346,37 @@ export function LogRouteIdentity({
               {groupLabel}
             </span>
           )}
-          {/* 分组维护页与供应商外链只在抽屉（plain）保留。 */}
-          {!isCompact && (
-            <>
-              {canOpenGroup && (
-                <RouteLink
-                  to={groupDetailHref(groupId)}
-                  data-testid="log-route-identity__group-link"
-                  {...stylex.props(styles.actionIcon, styles.groupLink)}
-                  aria-label={groupLinkAction}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <ArrowRight size={14} aria-hidden="true" />
-                </RouteLink>
+          {canOpenGroup && (
+            <RouteLink
+              to={groupDetailHref(groupId)}
+              data-testid="log-route-identity__group-link"
+              {...stylex.props(
+                styles.actionIcon,
+                isCompact && styles.compactActionIcon,
+                styles.groupLink,
               )}
-              {providerUrl && (
-                <a
-                  data-testid="log-route-identity__provider"
-                  {...stylex.props(styles.actionIcon)}
-                  href={providerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={t('monitor.logs.routeIdentity.openProviderUrl', {
-                    url: providerUrl,
-                  })}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <ExternalLink size={12} aria-hidden="true" />
-                </a>
-              )}
-            </>
+              aria-label={groupLinkAction}
+              title={groupLinkAction}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <ArrowRight size={14} aria-hidden="true" />
+            </RouteLink>
+          )}
+          {providerUrl && (
+            <a
+              data-testid="log-route-identity__provider"
+              {...stylex.props(styles.actionIcon, isCompact && styles.compactActionIcon)}
+              href={providerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={t('monitor.logs.routeIdentity.openProviderUrl', {
+                url: providerUrl,
+              })}
+              title={t('monitor.logs.routeIdentity.openProviderUrl', { url: providerUrl })}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <ExternalLink size={12} aria-hidden="true" />
+            </a>
           )}
         </span>
         {credentialLabel !== '' && credentialChip()}
