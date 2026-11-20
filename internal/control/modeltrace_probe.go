@@ -40,10 +40,9 @@ import (
 	"gpt-load/internal/usage"
 )
 
-// modelTraceChallengeOutputTokens bounds one challenge answer. The bank's
-// largest expected count is 332 integers, which fits comfortably below this
-// budget while staying a bounded, code-owned value.
-const modelTraceChallengeOutputTokens = 2048
+// modelTraceChallengeOutputTokens bounds each challenge's output, including
+// reasoning tokens where the provider counts them against the output budget.
+const modelTraceChallengeOutputTokens = 4096
 const modelTraceRunDeadline = 10 * time.Minute
 
 var modelTraceInFlight sync.Map

@@ -165,10 +165,11 @@ func (service *modelTraceTestService) observed() (challengeHits int, calls []map
 type modelTraceChallengeExecutor struct {
 	mu sync.Mutex
 
-	prompts  []string
-	sequence int
-	fail     func(index int) bool
-	execute  func(spec execution.AttemptSpec) execution.AttemptResult
+	prompts       []string
+	outputBudgets []int
+	sequence      int
+	fail          func(index int) bool
+	execute       func(spec execution.AttemptSpec) execution.AttemptResult
 	// usage is the usage evidence a successful challenge reports, so a test can
 	// assert that a challenge is priced like formal traffic.
 	usage *execution.UsageEvidence
@@ -184,6 +185,7 @@ func (executor *modelTraceChallengeExecutor) Execute(
 	var prompt string
 	prompt = spec.PromptText
 	executor.prompts = append(executor.prompts, prompt)
+	executor.outputBudgets = append(executor.outputBudgets, spec.ProbeMaxOutputTokens)
 	execute := executor.execute
 	fail := executor.fail
 	reportedUsage := executor.usage
@@ -232,6 +234,12 @@ func (executor *modelTraceChallengeExecutor) recordedPrompts() []string {
 	executor.mu.Lock()
 	defer executor.mu.Unlock()
 	return append([]string(nil), executor.prompts...)
+}
+
+func (executor *modelTraceChallengeExecutor) recordedOutputBudgets() []int {
+	executor.mu.Lock()
+	defer executor.mu.Unlock()
+	return append([]int(nil), executor.outputBudgets...)
 }
 
 // newModelTraceFixture installs one test ModelTrace deployment for the
@@ -287,6 +295,11 @@ func TestModelTraceProbeRecordsEveryChallengeAsFormalRequest(t *testing.T) {
 	prompts := executor.recordedPrompts()
 	if len(prompts) != len(analysis.challenges) {
 		t.Fatalf("executed challenges = %d, want %d", len(prompts), len(analysis.challenges))
+	}
+	for _, budget := range executor.recordedOutputBudgets() {
+		if budget != 4096 {
+			t.Errorf("challenge output budget = %d, want 4096", budget)
+		}
 	}
 	events := fixture.probeSink.Events()
 	if len(events) != len(analysis.challenges) {
