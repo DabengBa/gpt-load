@@ -3,7 +3,7 @@ module gpt-load
 go 1.27.3
 
 require (
-	github.com/Ikaleio/lm-detector/sdk/go v0.2.1-0.20261118004648-33fb43f26670
+	github.com/Ikaleio/lm-detector/sdk/go v0.2.1-0.20261119053927-70159b7536a2
 	github.com/andybalholm/brotli v1.2.8
 	github.com/buger/jsonparser v1.6.1
 	github.com/gin-gonic/gin v1.12.0
