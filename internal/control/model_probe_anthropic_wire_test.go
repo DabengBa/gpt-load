@@ -21,6 +21,11 @@ func TestModelProbeAnthropicPreparedWire(t *testing.T) {
 		}
 		bodies <- body
 		w.Header().Set("Content-Type", "application/json")
+		if r.Header.Get("Content-Type") != "application/json" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"type":"error","error":{"type":"invalid_request_error","message":"missing JSON Content-Type"}}`))
+			return
+		}
 		_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","role":"assistant","model":"claude-test","content":[{"type":"text","text":"4"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`))
 	}))
 	defer server.Close()
