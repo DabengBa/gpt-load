@@ -1999,7 +1999,6 @@ func (chunk *AnthropicStreamEvent) ToBifrostResponsesStream(ctx context.Context,
 			case AnthropicContentBlockTypeThinking:
 				// Thinking/reasoning block - emit output_item.added with type "reasoning"
 				messageType := schemas.ResponsesMessageTypeReasoning
-				role := schemas.ResponsesInputMessageRoleAssistant
 
 				// Generate stable ID for reasoning item
 				var itemID string
@@ -2014,7 +2013,6 @@ func (chunk *AnthropicStreamEvent) ToBifrostResponsesStream(ctx context.Context,
 				item := &schemas.ResponsesMessage{
 					ID:   &itemID,
 					Type: &messageType,
-					Role: &role,
 					ResponsesReasoning: &schemas.ResponsesReasoning{
 						Summary: []schemas.ResponsesReasoningSummary{},
 					},
@@ -2071,7 +2069,6 @@ func (chunk *AnthropicStreamEvent) ToBifrostResponsesStream(ctx context.Context,
 				// Anthropic rejects tool-use follow-ups whose latest assistant
 				// message dropped it.
 				messageType := schemas.ResponsesMessageTypeReasoning
-				role := schemas.ResponsesInputMessageRoleAssistant
 
 				// Generate stable ID for the reasoning item
 				var itemID string
@@ -2085,7 +2082,6 @@ func (chunk *AnthropicStreamEvent) ToBifrostResponsesStream(ctx context.Context,
 				item := &schemas.ResponsesMessage{
 					ID:   &itemID,
 					Type: &messageType,
-					Role: &role,
 					ResponsesReasoning: &schemas.ResponsesReasoning{
 						Summary:          []schemas.ResponsesReasoningSummary{},
 						EncryptedContent: chunk.ContentBlock.Data,
@@ -2852,7 +2848,6 @@ func (chunk *AnthropicStreamEvent) ToBifrostResponsesStream(ctx context.Context,
 								},
 							},
 						}
-						storedItem.ResponsesReasoning = nil
 					}
 
 					// Emit reasoning_summary_text.done (reasoning equivalent of

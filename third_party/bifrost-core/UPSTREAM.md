@@ -51,6 +51,10 @@ The adapter can abandon conversion before its producer finishes, so it does not
 release the ledger prematurely; immediate cleanup on abandonment remains a
 separate lifecycle verification concern.
 
+The fork also normalizes Anthropic streaming reasoning items to match unary
+Responses output. See [Reasoning History Replay](../../.docs/tech/reasoning-replay.md#anthropic-messages-to-responses)
+for the mapping, regression proof, and distinction from the earlier Chat fix.
+
 Modified/added files:
 
 | file | change |

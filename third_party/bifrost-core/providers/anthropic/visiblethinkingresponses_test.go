@@ -1,12 +1,111 @@
 package anthropic
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/maximhq/bifrost/core/schemas"
 )
+
+func TestAnthropicResponsesReasoningWireShape(t *testing.T) {
+	t.Parallel()
+
+	assertReasoning := func(t *testing.T, items []map[string]json.RawMessage) {
+		t.Helper()
+		found := 0
+		for _, item := range items {
+			if string(item["type"]) != `"reasoning"` {
+				continue
+			}
+			found++
+			if role, ok := item["role"]; ok {
+				t.Errorf("reasoning has unexpected role %s", role)
+			}
+			var summary []json.RawMessage
+			if err := json.Unmarshal(item["summary"], &summary); err != nil || summary == nil {
+				t.Errorf("reasoning summary = %s, want JSON array", item["summary"])
+			}
+		}
+		if found != 1 {
+			t.Errorf("got %d reasoning items, want 1", found)
+		}
+	}
+	for _, tc := range []struct {
+		name   string
+		block  AnthropicContentBlock
+		events []*AnthropicStreamEvent
+	}{
+		{
+			name:   "thinking",
+			block:  AnthropicContentBlock{Type: AnthropicContentBlockTypeThinking, Thinking: new("Planning a tool call"), Signature: new("test-signature")},
+			events: visibleThinkingToolUseLifecycle([]string{"Planning a tool call"}, "test-signature"),
+		},
+		{
+			name:   "redacted_thinking",
+			block:  AnthropicContentBlock{Type: AnthropicContentBlockTypeRedactedThinking, Data: new("opaque-data")},
+			events: redactedThinkingLifecycle("opaque-data"),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Run("unary", func(t *testing.T) {
+				ctx := schemas.NewBifrostContext(context.Background(), time.Time{})
+				resp := (&AnthropicMessageResponse{Content: []AnthropicContentBlock{tc.block}}).ToBifrostResponsesResponse(ctx)
+				var wire struct{ Output []map[string]json.RawMessage }
+				data, err := json.Marshal(resp.WithDefaults())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := json.Unmarshal(data, &wire); err != nil {
+					t.Fatal(err)
+				}
+				assertReasoning(t, wire.Output)
+			})
+
+			seen := map[schemas.ResponsesStreamResponseType]bool{}
+			for _, event := range driveResponsesStream(t, tc.events) {
+				switch event.Type {
+				case schemas.ResponsesStreamResponseTypeOutputItemAdded, schemas.ResponsesStreamResponseTypeOutputItemDone:
+					if event.Item == nil || event.Item.Type == nil || *event.Item.Type != schemas.ResponsesMessageTypeReasoning {
+						continue
+					}
+				case schemas.ResponsesStreamResponseTypeCompleted:
+				default:
+					continue
+				}
+				seen[event.Type] = true
+				t.Run(string(event.Type), func(t *testing.T) {
+					var wire struct {
+						Item     map[string]json.RawMessage
+						Response struct{ Output []map[string]json.RawMessage }
+					}
+					data, err := json.Marshal(event.WithDefaults())
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := json.Unmarshal(data, &wire); err != nil {
+						t.Fatal(err)
+					}
+					if event.Type == schemas.ResponsesStreamResponseTypeCompleted {
+						assertReasoning(t, wire.Response.Output)
+					} else {
+						assertReasoning(t, []map[string]json.RawMessage{wire.Item})
+					}
+				})
+			}
+			for _, kind := range []schemas.ResponsesStreamResponseType{
+				schemas.ResponsesStreamResponseTypeOutputItemAdded,
+				schemas.ResponsesStreamResponseTypeOutputItemDone,
+				schemas.ResponsesStreamResponseTypeCompleted,
+			} {
+				if !seen[kind] {
+					t.Errorf("missing %s", kind)
+				}
+			}
+		})
+	}
+}
 
 // visibleThinkingToolUseLifecycle returns the real Anthropic SSE shape of a
 // response with extended thinking enabled: a thinking block (text deltas, then
