@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -247,14 +248,30 @@ func (server *Server) handleDownloadDebugCapture(c *gin.Context) {
 		writeServiceError(c, "download_debug_capture", err)
 		return
 	}
+	// Stage the archive before sending headers so an export error can still return JSON.
+	archive, err := os.CreateTemp("", "gpt-load-debug-capture-*.zip")
+	if err != nil {
+		writeServiceError(c, "download_debug_capture", err)
+		return
+	}
+	defer archive.Close()
+	// Debug capture storage is supported on Unix; unlink the still-open file
+	// before writing sensitive data so it cannot be left behind on process exit.
+	if err := os.Remove(archive.Name()); err != nil {
+		writeServiceError(c, "download_debug_capture", err)
+		return
+	}
+	if err := server.service.ExportDebugCapture(c.Request.Context(), id, archive); err != nil {
+		writeServiceError(c, "download_debug_capture", err)
+		return
+	}
+	if _, err := archive.Seek(0, io.SeekStart); err != nil {
+		writeServiceError(c, "download_debug_capture", err)
+		return
+	}
 	c.Header("Content-Type", "application/zip")
 	c.Header("Content-Disposition", `attachment; filename="debug-capture-`+id+`.zip"`)
-	c.Header("Cache-Control", "no-store")
-	if err := server.service.ExportDebugCapture(c.Request.Context(), id, c.Writer); err != nil {
-		if !c.Writer.Written() {
-			writeServiceError(c, "download_debug_capture", err)
-			return
-		}
+	if _, err := io.Copy(c.Writer, archive); err != nil {
 		logServiceError("download_debug_capture", err, app_errors.ErrInternalServer.Code)
 	}
 }

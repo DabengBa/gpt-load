@@ -49,7 +49,7 @@ The list endpoint accepts `request_id`, `access_key_id`, `protocol`, `operation`
 
 `state` accepts `active`, `completed`, `failed`, and `expired`, but the list only reads rows whose `expires_at_ms` is still in the future, ordered by creation time. A session that already expired is not listed under `state=expired`; that value currently returns nothing. Use the structured request log for history beyond the fixed 24-hour retention.
 
-The detail response contains session metadata, lifecycle state, errors, and ordered logical attempts. The download endpoint streams a ZIP containing a JSON manifest, per-attempt metadata, and raw request/response header and body parts. Download responses are marked `no-store`.
+The detail response contains session metadata, lifecycle state, errors, and ordered logical attempts. The download endpoint builds a complete ZIP with a JSON manifest, per-attempt metadata, and raw request/response header and body parts before sending it. If the archive cannot be built, the endpoint returns a JSON error instead of a partial attachment. Download responses are marked `no-store`.
 
 The `/api/health` response includes `debug_capture` with enabled/running state, fixed retention seconds, active/completed/failed counts, sweep counters, and timestamps. These state counts describe unexpired database rows, not the runtime's in-memory admission slots. When all 64 slots are occupied, the component reports `error: "session_limit_reached"`, including when expired rows have already disappeared from the counts. The error clears when admission becomes available again. If the optional store cannot provide counts, the component reports `error: "counts_unavailable"` while the broader health response remains available.
 
