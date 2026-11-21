@@ -43,8 +43,8 @@
     "verify:request-log-affinity": "node scripts/verify-request-log-affinity.mjs"
   },
   "dependencies": {
-    "@astryxdesign/core": "0.7.4",
-    "@astryxdesign/theme-neutral": "0.7.4",
+    "@astryxdesign/core": "0.7.17",
+    "@astryxdesign/theme-neutral": "0.7.17",
     "@stylexjs/stylex": "0.19.1",
     "@tanstack/query-core": "5.105.0",
     "@tanstack/react-query": "5.105.0",
@@ -55,10 +55,10 @@
     "react-intl": "12.1.6"
   },
   "devDependencies": {
-    "@astryxdesign/cli": "0.7.4",
+    "@astryxdesign/cli": "0.7.17",
     "@babel/core": "8.0.9",
     "@formatjs/icu-messageformat-parser": "3.5.22",
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.1",
     "@rolldown/plugin-babel": "0.2.4",
     "@stylexjs/eslint-plugin": "0.19.1",
     "@stylexjs/unplugin": "0.19.1",
