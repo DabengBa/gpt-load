@@ -2,10 +2,15 @@ allowBuilds:
   # postinstall is a no-op `astryx init` nudge; nothing functional to run.
   '@astryxdesign/cli': false
   '@astryxdesign/core': false
+  # pnpm installs esbuild's platform binary as an optional dependency.
+  esbuild: false
 
 minimumReleaseAgeExclude:
   - lucide-react@1.62.0
   - react-intl@12.1.6
+  - '@astryxdesign/cli@0.7.17'
+  - '@astryxdesign/core@0.7.17'
+  - '@astryxdesign/theme-neutral@0.7.17'
 
 overrides:
   brace-expansion: 5.0.12

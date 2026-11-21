@@ -14,23 +14,24 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 //     of the Phase 1 surfaces.
 //   - --text-label-xs 10.5px: the smallest Astryx label stop is 11.5px.
 
-const THEMED_SCOPE = '[data-astryx-theme]'
+const THEMED_ROOT = 'html[data-astryx-theme]'
 
 async function openLogin(page: Page) {
   await page.goto('/login')
   await expect(page.getByTestId('astryx-shell')).toBeVisible()
 }
 
-async function computedVar(page: Page, name: string) {
-  return page.evaluate(
-    ([scopeSelector, varName]) => {
-      const scope = document.querySelector(scopeSelector) ?? document.documentElement
-      return getComputedStyle(scope)
-        .getPropertyValue(varName as string)
-        .trim()
-    },
-    [THEMED_SCOPE, name],
-  )
+async function resolvedLength(page: Page, name: string) {
+  return page.locator(THEMED_ROOT).evaluate((scope, token) => {
+    const probe = document.createElement('div')
+    probe.style.position = 'absolute'
+    probe.style.visibility = 'hidden'
+    probe.style.width = `var(${token})`
+    scope.append(probe)
+    const width = getComputedStyle(probe).width
+    probe.remove()
+    return width
+  }, name)
 }
 
 test('theme emits the classic density tokens', async ({ page }) => {
@@ -52,23 +53,15 @@ test('theme emits the classic density tokens', async ({ page }) => {
     ['--radius-element', '8px'],
     ['--radius-container', '14px'],
   ]
+  // Dynamic type tokens may be calc() expressions rather than literal pixels.
   for (const [name, expected] of expectations) {
-    expect(await computedVar(page, name), name).toBe(expected)
+    expect(await resolvedLength(page, name), name).toBe(expected)
   }
   // Spacing base: the Astryx spacing unit must stay the classic 4px grid.
   // The theme keeps the neutral rem scale (`--spacing-1: 0.25rem`), which the
   // migration plan records as "no remapping", so resolve the token to px
   // instead of comparing the literal unit text.
-  const spacingPx = await page.evaluate(() => {
-    const probe = document.createElement('div')
-    probe.style.position = 'absolute'
-    probe.style.visibility = 'hidden'
-    probe.style.width = 'var(--spacing-1)'
-    document.documentElement.append(probe)
-    const px = Number.parseFloat(getComputedStyle(probe).width)
-    probe.remove()
-    return px
-  })
+  const spacingPx = Number.parseFloat(await resolvedLength(page, '--spacing-1'))
   expect(Math.abs(spacingPx - 4)).toBeLessThanOrEqual(1)
 })
 
