@@ -539,6 +539,13 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 		spec.Operation = execution.OperationChatCompletion
 		spec.Method, spec.Path = http.MethodPost, "/v1/messages"
 		spec.Body, spec.ProbePreparedBody = spec.ProbePreparedBody, nil
+		if spec.RouteMode == execution.RouteNative && spec.Header.Get("Content-Type") == "" {
+			spec.Header = spec.Header.Clone()
+			if spec.Header == nil {
+				spec.Header = make(http.Header)
+			}
+			spec.Header.Set("Content-Type", "application/json")
+		}
 	}
 	if spec.Operation == execution.OperationProbe && spec.ClientProtocol == protocol.Gemini && len(spec.ProbePreparedBody) > 0 {
 		spec.Operation = execution.OperationChatCompletion
