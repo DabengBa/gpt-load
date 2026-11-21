@@ -8,9 +8,12 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/klauspost/compress/zstd"
 
 	"gpt-load/internal/storage"
 	"gpt-load/internal/storage/models"
@@ -155,6 +158,69 @@ func TestDBStoreReadsLegacyRawChunks(t *testing.T) {
 	got, err := store.ReadPart(session.ID(), attempt.ID(), PartBody, DirectionRequest)
 	if err != nil || !bytes.Equal(got, legacy) {
 		t.Fatalf("legacy ReadPart() = %x, %v; want %x", got, err, legacy)
+	}
+}
+
+func TestDBStoreExportsWideWindowChunkAndAllAttempts(t *testing.T) {
+	now := time.Now()
+	store := newTestStore(t, &now)
+	session, err := store.StartSession(SessionMetadata{RequestID: "legacy-zstd"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := session.StartAttempt(AttemptMetadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := bytes.Repeat([]byte{0, 1, 2, 255}, bodyChunkSize/4)
+	if err := first.AppendBodyPart(DirectionRequest, bytes.NewReader(request)); err != nil {
+		t.Fatal(err)
+	}
+	var chunk models.DebugCaptureChunk
+	if err := store.db.Where("attempt_id = ?", first.ID()).First(&chunk).Error; err != nil {
+		t.Fatal(err)
+	}
+	var header zstd.Header
+	if err := header.Decode(chunk.Data); err != nil || chunk.Encoding != "zstd" || header.WindowSize != 4<<20 {
+		t.Fatalf("fixture needs historical 4 MiB Zstd window: encoding=%s, header=%+v, err=%v", chunk.Encoding, header, err)
+	}
+	response := []byte("second attempt response\x00\xff")
+	if err := first.Complete(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := session.StartAttempt(AttemptMetadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := second.AppendBodyPart(DirectionResponse, bytes.NewReader(response)); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Complete(); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Complete(); err != nil {
+		t.Fatal(err)
+	}
+
+	var exported bytes.Buffer
+	if err := store.ExportZIP(session.ID(), &exported); err != nil {
+		t.Fatalf("ExportZIP() with historical Zstd chunk: %v", err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(exported.Bytes()), int64(exported.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archive.File) != 11 {
+		t.Fatalf("got %d ZIP entries, want manifest and five entries per attempt", len(archive.File))
+	}
+	for name, want := range map[string][]byte{
+		archivePartName(first.ID(), PartBody, DirectionRequest):   request,
+		archivePartName(second.ID(), PartBody, DirectionResponse): response,
+	} {
+		got, err := fs.ReadFile(archive, name)
+		if err != nil || !bytes.Equal(got, want) {
+			t.Errorf("ZIP entry %s: got %d bytes, want %d byte-identical bytes; err=%v", name, len(got), len(want), err)
+		}
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 
 	"gpt-load/internal/debugcapture"
 	"gpt-load/internal/platform/config"
+	"gpt-load/internal/storage/models"
 )
 
 func TestDebugCaptureAdminAPIListsDetailsAndDownloadsPlaintext(t *testing.T) {
@@ -119,6 +120,69 @@ func TestDebugCaptureAdminAPIErrorResponsesAreNotCacheable(t *testing.T) {
 	}
 	if response.Header().Get("Cache-Control") != "no-store" || response.Header().Get("Pragma") != "no-cache" {
 		t.Fatalf("invalid list cache headers = %#v", response.Header())
+	}
+}
+
+func TestDebugCaptureAdminAPIRejectsPartialDownload(t *testing.T) {
+	t.Run("invalid Zstd frame", func(t *testing.T) {
+		testDebugCaptureAdminAPIRejectsPartialDownload(t, []byte("invalid zstd chunk"))
+	})
+	t.Run("empty Zstd frame", func(t *testing.T) {
+		testDebugCaptureAdminAPIRejectsPartialDownload(t, []byte{})
+	})
+
+}
+
+func testDebugCaptureAdminAPIRejectsPartialDownload(t *testing.T, data []byte) {
+	t.Helper()
+	initControlI18n(t)
+	fixture := newServiceFixture(t)
+	store, err := debugcapture.NewWithClock(fixture.db, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.service.SetDebugCaptureReader(store)
+	session, err := store.StartSession(debugcapture.SessionMetadata{RequestID: "corrupt-chunk"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := session.StartAttempt(debugcapture.AttemptMetadata{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := attempt.AppendBodyPart(debugcapture.DirectionRequest, bytes.NewReader([]byte("valid request body"))); err != nil {
+		t.Fatal(err)
+	}
+	bad := models.DebugCaptureChunk{
+		CaptureID: session.ID(), AttemptID: attempt.ID(), Part: string(debugcapture.PartBody),
+		Direction: string(debugcapture.DirectionResponse), Encoding: "zstd", Data: data,
+	}
+	if err := fixture.db.Create(&bad).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := attempt.Complete(); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Complete(); err != nil {
+		t.Fatal(err)
+	}
+
+	var partial bytes.Buffer
+	if err := store.ExportZIP(session.ID(), &partial); err == nil {
+		t.Error("ExportZIP() accepted a corrupt chunk")
+	}
+	if _, err := zip.NewReader(bytes.NewReader(partial.Bytes()), int64(partial.Len())); err == nil {
+		t.Error("failed ExportZIP() finalized an openable partial archive")
+	}
+
+	server := NewServer(&config.Config{AuthKey: "admin-secret"}, fixture.service)
+	engine := gin.New()
+	server.RegisterRoutes(engine)
+	download := serveDebugCaptureRequest(engine, http.MethodGet, "/api/debug-captures/"+session.ID()+"/download", "admin-secret")
+	if download.Code != http.StatusInternalServerError || download.Header().Get("Content-Disposition") != "" ||
+		download.Header().Get("Cache-Control") != "no-store" ||
+		!bytes.Contains(download.Body.Bytes(), []byte(`"code":"INTERNAL_SERVER_ERROR"`)) || !json.Valid(download.Body.Bytes()) {
+		t.Fatalf("download = %d, headers=%v, body=%q; want non-cacheable JSON 500 with no attachment", download.Code, download.Header(), download.Body.Bytes()[:min(download.Body.Len(), 160)])
 	}
 }
 

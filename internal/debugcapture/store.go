@@ -27,6 +27,8 @@ const (
 	retention        = 24 * time.Hour
 	bodyChunkSize    = 64 * 1024
 	cleanupBatchSize = 100
+	// Historical SpeedFastest frames can advertise a 4 MiB window for a 64 KiB chunk.
+	chunkZstdMaxWindow = 4 << 20
 )
 
 type Store struct {
@@ -232,6 +234,7 @@ func (s *Store) ExportZIP(id string, output io.Writer) error {
 	if output == nil {
 		return errors.New("debug capture export writer is required")
 	}
+	archive := zip.NewWriter(output)
 	err := s.read("export debug capture", func(tx *gorm.DB) error {
 		var row models.DebugCapture
 		if err := tx.Preload("Attempts", func(db *gorm.DB) *gorm.DB {
@@ -249,36 +252,35 @@ func (s *Store) ExportZIP(id string, output io.Writer) error {
 		if err != nil {
 			return err
 		}
-		archive := zip.NewWriter(output)
 		if err := addJSONToZIP(archive, "manifest.json", record); err != nil {
-			_ = archive.Close()
 			return fmt.Errorf("write debug capture manifest: %w", err)
 		}
 		for _, attempt := range row.Attempts {
 			metadata, err := attemptRecord(attempt)
 			if err != nil {
-				_ = archive.Close()
 				return err
 			}
 			if err := addJSONToZIP(archive, filepath.Join("attempts", attempt.ID, "metadata.json"), metadata); err != nil {
-				_ = archive.Close()
 				return err
 			}
 			for _, direction := range []Direction{DirectionRequest, DirectionResponse} {
 				for _, part := range []Part{PartHeaders, PartBody} {
 					if err := addChunksToZIP(tx, archive, row.ID, attempt.ID, part, direction); err != nil {
-						_ = archive.Close()
 						return err
 					}
 				}
 			}
 		}
-		if err := archive.Close(); err != nil {
-			return fmt.Errorf("close debug capture export: %w", err)
-		}
 		return nil
 	})
-	return s.markExpiryOnError(id, err)
+	if err != nil {
+		// Closing a failed export would write a valid central directory for an incomplete archive.
+		return s.markExpiryOnError(id, err)
+	}
+	if err := archive.Close(); err != nil {
+		return fmt.Errorf("close debug capture export: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) ReadPart(sessionID, attemptID string, part Part, direction Direction) ([]byte, error) {
@@ -716,7 +718,13 @@ func decodeChunk(data []byte, encoding string) ([]byte, error) {
 	case "identity":
 		return data, nil
 	case "zstd":
-		decoder, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1), zstd.WithDecoderLowmem(true), zstd.WithDecoderMaxMemory(bodyChunkSize*2))
+		if len(data) == 0 {
+			return nil, errors.New("empty Zstandard debug capture chunk")
+		}
+		decoder, err := zstd.NewReader(nil,
+			zstd.WithDecoderConcurrency(1), zstd.WithDecoderLowmem(true),
+			zstd.WithDecoderMaxMemory(chunkZstdMaxWindow), zstd.WithDecodeAllCapLimit(true),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("create debug capture chunk decoder: %w", err)
 		}
@@ -724,9 +732,6 @@ func decodeChunk(data []byte, encoding string) ([]byte, error) {
 		decoded, err := decoder.DecodeAll(data, make([]byte, 0, bodyChunkSize))
 		if err != nil {
 			return nil, fmt.Errorf("decompress debug capture chunk: %w", err)
-		}
-		if len(decoded) > bodyChunkSize {
-			return nil, fmt.Errorf("debug capture chunk expands beyond %d bytes", bodyChunkSize)
 		}
 		return decoded, nil
 	default:
