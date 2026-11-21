@@ -1,5 +1,5 @@
 ---
-description: "Define reasoning-history serialization and tool pairing when Bifrost converts between Chat Completions and Responses."
+description: "Define reasoning-history serialization and tool pairing when Bifrost converts between Responses, Anthropic Messages, and Chat Completions."
 kind: technical
 topic: protocol-conversion
 relations:
@@ -11,6 +11,8 @@ code:
     - third_party/bifrost-core/schemas/mux.go
     - third_party/bifrost-core/schemas/responses.go
     - third_party/bifrost-core/providers/openai/chat.go
+    - third_party/bifrost-core/providers/anthropic/responses.go
+    - third_party/bifrost-core/providers/anthropic/visiblethinkingresponses_test.go
     - internal/execution/bifrost/reasoning_replay_test.go
     - internal/execution/bifrost/responses_to_chat_replay_test.go
     - internal/codexrecovery/classify.go
@@ -23,7 +25,8 @@ code:
 ## Responsibility
 
 Bifrost protocol conversion carries reasoning history and associated tool calls
-between Chat Completions and Responses. This boundary is separate from the
+between Chat Completions and Responses, and maps Anthropic Messages thinking
+blocks to Responses reasoning items. This boundary is separate from the
 [route-entry reasoning policy](reasoning-policy.md), which chooses request
 effort rather than transforming conversation history. The local fork and its
 upgrade procedure are recorded in
@@ -31,8 +34,9 @@ upgrade procedure are recorded in
 
 ## Architecture And Constraints
 
-The root module requires Bifrost core v1.13.1 and replaces it with
-`third_party/bifrost-core`. Its schema converters and provider serializers
+The root module requires the Bifrost core version recorded in
+`UPSTREAM.md` and replaces it with `third_party/bifrost-core`.
+Its schema converters and provider serializers
 determine the actual converted payload. Native passthrough does not repair
 previously saved client history during normal forwarding. The failure-triggered
 Responses recovery below is a separate, bounded gateway behavior, not a
@@ -62,6 +66,27 @@ A client can therefore replay newly converted items verbatim to a Responses
 route without introducing the unsupported `role` or missing `summary` that
 previously caused rejection. The converter does not rewrite history already
 stored by a client.
+
+### Anthropic Messages To Responses
+
+Anthropic `thinking` and `redacted_thinking` blocks are represented as
+`type: "reasoning"` items, separate from ordinary assistant messages.
+The enclosing Anthropic message's `role` does not carry over to the reasoning
+item; ordinary assistant messages still carry it.
+`summary` is an empty array when no summary is available. Visible thinking stays
+in `content` as `reasoning_text` with its signature when present, and redacted
+data stays in `encrypted_content`. Item IDs and tool-call ordering are unchanged.
+The `role` and `summary` rules apply to unary output, streaming
+`response.output_item.added` and `response.output_item.done`, and terminal
+response output. The full visible thinking text is attached when the block ends.
+
+The [earlier Chat Completions fix](https://github.com/DabengBa/gpt-load/commit/91f87157)
+normalized that converter only. Anthropic's unary output already used the
+required shape, but its streaming converter still emitted `role: "assistant"`
+on reasoning items and lost the summary array when visible thinking finished.
+The streaming fix aligns it with unary output so a client does not replay those
+invalid fields to a strict Responses route. `TestAnthropicResponsesReasoningWireShape`
+checks serialized JSON for both block types and output modes.
 
 ### Responses To OpenAI-Compatible Chat Completions
 
