@@ -30,90 +30,90 @@ func queryUsageDistributions(
 		dimensions = []UsageDistributionDimension{UsageDistributionDimensionModel}
 	}
 	for _, dimension := range dimensions {
-		for _, metric := range []UsageDistributionMetric{
-			UsageDistributionMetricRequests,
-			UsageDistributionMetricTokens,
-			UsageDistributionMetricCost,
-		} {
-			distribution, err := queryUsageDistribution(scope, summary, dimension, metric)
-			if err != nil {
-				return UsageDistributions{}, err
-			}
-			switch dimension {
-			case UsageDistributionDimensionGroup:
-				result.Group[metric] = distribution
-			case UsageDistributionDimensionModel:
-				result.Model[metric] = distribution
-			case UsageDistributionDimensionAccessKey:
-				result.AccessKey[metric] = distribution
-			}
+		distributions, err := queryUsageDistributionDimension(scope, summary, dimension)
+		if err != nil {
+			return UsageDistributions{}, err
+		}
+		switch dimension {
+		case UsageDistributionDimensionGroup:
+			result.Group = distributions
+		case UsageDistributionDimensionModel:
+			result.Model = distributions
+		case UsageDistributionDimensionAccessKey:
+			result.AccessKey = distributions
 		}
 	}
 	return result, nil
 }
 
-func queryUsageDistribution(
+func queryUsageDistributionDimension(
 	scope *gorm.DB,
 	summary UsageAggregate,
 	dimension UsageDistributionDimension,
-	metric UsageDistributionMetric,
-) (UsageDistribution, error) {
-	var rows []usageDistributionRow
+) (map[UsageDistributionMetric]UsageDistribution, error) {
 	query := scope.Session(&gorm.Session{})
+	var identity string
 	switch dimension {
 	case UsageDistributionDimensionGroup:
+		identity = "group_id"
 		query = query.Select("group_id, 0 AS access_key_id, '' AS model, "+usageDistributionAggregateSelect).
 			Where("group_id IN (?)", scope.Session(&gorm.Session{NewDB: true}).
 				Model(&models.Group{}).Select("id")).
 			Group("group_id")
 	case UsageDistributionDimensionModel:
+		identity = "model"
 		query = query.Select("0 AS group_id, 0 AS access_key_id, model, " + usageDistributionAggregateSelect).
 			Group("model")
 	case UsageDistributionDimensionAccessKey:
+		identity = "access_key_id"
 		query = query.Select("0 AS group_id, access_key_id, '' AS model, "+usageDistributionAggregateSelect).
 			Where("access_key_id IN (?)", scope.Session(&gorm.Session{NewDB: true}).
 				Model(&models.AccessKey{}).Select("id")).
 			Group("access_key_id")
 	default:
-		return UsageDistribution{}, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"query usage distribution: unsupported dimension %q",
 			dimension,
 		)
 	}
-	switch metric {
-	case UsageDistributionMetricRequests:
-		query = query.
-			Order("SUM(request_count) DESC").
-			Order("SUM(estimated_cost_nano_usd) DESC")
-	case UsageDistributionMetricTokens:
-		query = query.
-			Order(usageDistributionTotalTokensExpression + " DESC").
-			Order("SUM(request_count) DESC").
-			Order("SUM(estimated_cost_nano_usd) DESC")
-	case UsageDistributionMetricCost:
-		query = query.
-			Order("SUM(estimated_cost_nano_usd) DESC").
-			Order("SUM(request_count) DESC")
-	default:
-		return UsageDistribution{}, fmt.Errorf(
-			"query usage distribution: unsupported metric %q",
-			metric,
-		)
-	}
-	switch dimension {
-	case UsageDistributionDimensionGroup:
-		query = query.Order("group_id ASC")
-	case UsageDistributionDimensionModel:
-		query = query.Order("model ASC")
-	case UsageDistributionDimensionAccessKey:
-		query = query.Order("access_key_id ASC")
-	}
-	if err := query.
-		Limit(usageDistributionLimit).
+	// Rank all three metrics over the same grouped rows instead of scanning
+	// usage_stats three times. Return at most three top-five lists' worth of rows.
+	base := scope.Session(&gorm.Session{NewDB: true})
+	ranked := base.Table("(?) AS grouped", query).Select("grouped.*, " +
+		"ROW_NUMBER() OVER (ORDER BY request_count DESC, estimated_cost_nano_usd DESC, " + identity + ") AS request_rank, " +
+		"ROW_NUMBER() OVER (ORDER BY total_tokens DESC, request_count DESC, estimated_cost_nano_usd DESC, " + identity + ") AS token_rank, " +
+		"ROW_NUMBER() OVER (ORDER BY estimated_cost_nano_usd DESC, request_count DESC, " + identity + ") AS cost_rank")
+	var rows []usageDistributionRow
+	if err := base.Table("(?) AS ranked", ranked).
+		Where("request_rank <= ? OR token_rank <= ? OR cost_rank <= ?", usageDistributionLimit, usageDistributionLimit, usageDistributionLimit).
 		Find(&rows).Error; err != nil {
-		return UsageDistribution{}, fmt.Errorf("query usage distribution: %w", err)
+		return nil, fmt.Errorf("query usage distribution: %w", err)
 	}
+	result := make(map[UsageDistributionMetric]UsageDistribution, 3)
+	for _, ordering := range []struct {
+		metric UsageDistributionMetric
+		rank   func(usageDistributionRow) int
+	}{
+		{UsageDistributionMetricRequests, func(row usageDistributionRow) int { return row.RequestRank }},
+		{UsageDistributionMetricTokens, func(row usageDistributionRow) int { return row.TokenRank }},
+		{UsageDistributionMetricCost, func(row usageDistributionRow) int { return row.CostRank }},
+	} {
+		top := make([]usageDistributionRow, min(len(rows), usageDistributionLimit))
+		for _, row := range rows {
+			if rank := ordering.rank(row); rank <= len(top) {
+				top[rank-1] = row
+			}
+		}
+		distribution, err := buildUsageDistribution(top, summary, dimension, ordering.metric)
+		if err != nil {
+			return nil, err
+		}
+		result[ordering.metric] = distribution
+	}
+	return result, nil
+}
 
+func buildUsageDistribution(rows []usageDistributionRow, summary UsageAggregate, dimension UsageDistributionDimension, metric UsageDistributionMetric) (UsageDistribution, error) {
 	result := UsageDistribution{
 		Dimension: dimension,
 		Metric:    metric,

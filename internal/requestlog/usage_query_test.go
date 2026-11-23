@@ -734,12 +734,12 @@ func TestQueryUsageRejectsCorruptRowsOutsideTopDistribution(t *testing.T) {
 	if series, err := queryUsageSeries(usageStatScope(db, input), time.Hour.Milliseconds()); err != nil || len(series) != 1 {
 		t.Fatalf("pre-integrity series = %#v/%v, want one valid hour aggregate", series, err)
 	}
-	if distribution, err := queryUsageDistribution(
+	distributions, err := queryUsageDistributionDimension(
 		usageStatScope(db, input),
 		summary,
 		UsageDistributionDimensionGroup,
-		UsageDistributionMetricRequests,
-	); err != nil || len(distribution.Items) != 5 || distribution.Items[4].GroupID != 5 {
+	)
+	if distribution := distributions[UsageDistributionMetricRequests]; err != nil || len(distribution.Items) != 5 || distribution.Items[4].GroupID != 5 {
 		t.Fatalf("pre-integrity distribution = %#v/%v, want valid top five", distribution, err)
 	}
 

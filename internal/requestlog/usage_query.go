@@ -391,4 +391,7 @@ type usageDistributionRow struct {
 	AccessKeyID uint
 	Model       string
 	UsageDistributionAggregate
+	RequestRank int
+	TokenRank   int
+	CostRank    int
 }
