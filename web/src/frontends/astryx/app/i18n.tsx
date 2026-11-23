@@ -87,10 +87,13 @@ export async function createAppI18n(): Promise<AppI18n> {
     return request
   }
 
-  // Per-namespace: merge en-US first, then overlay the active locale.
+  // Fetch independently; emit still merges en-US before the active locale.
   async function ensureMerged(targetLocale: AppLocale, namespace: 'core' | MessageNamespace) {
-    if (targetLocale !== 'en-US') await ensure('en-US', namespace)
-    await ensure(targetLocale, namespace)
+    if (targetLocale === 'en-US') {
+      await ensure('en-US', namespace)
+    } else {
+      await Promise.all([ensure('en-US', namespace), ensure(targetLocale, namespace)])
+    }
   }
 
   async function ensureRegistered(targetLocale: AppLocale) {

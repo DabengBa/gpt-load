@@ -13,6 +13,33 @@ test('cold login does not load business page modules', async ({ page }) => {
   expect(requests.some((url) => business.test(url))).toBe(false)
 })
 
+test('cold Chinese login requests its catalog while the fallback is still loading', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('gpt-load.locale', 'zh-CN'))
+  const fallbackCatalog = '**/i18n/locales/en-US/core.ts*'
+  const fallback = page.waitForRequest(fallbackCatalog)
+  let activeRequested = false
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.endsWith('/i18n/locales/zh-CN/core.ts')) {
+      activeRequested = true
+    }
+  })
+  const gate = Promise.withResolvers<void>()
+  await page.route(fallbackCatalog, async (route) => {
+    await gate.promise
+    await route.continue()
+  })
+  try {
+    await page.goto('/login', { waitUntil: 'commit' })
+    await fallback
+    // The fallback has not responded yet; the active request must not need it.
+    await expect.poll(() => activeRequested).toBe(true)
+  } finally {
+    gate.resolve()
+  }
+  await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN')
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+})
+
 test('intent preloads a guarded route without navigating or changing auth', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('gpt-load.auth-key', 'e2e-admin-key'))
   await page.route('**/api/**', async (route) => {
