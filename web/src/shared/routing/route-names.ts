@@ -7,7 +7,6 @@ export const sharedPageRouteNames = {
   groups: 'groups',
   announcements: 'announcements',
   groupDetail: 'group-detail',
-  accessKeys: 'access-keys',
   monitor: 'monitor',
   schedule: 'schedule',
   logs: 'logs',

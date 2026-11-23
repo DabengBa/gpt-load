@@ -54,14 +54,6 @@ export const pageRouteMeta: Readonly<Record<string, PageRouteMeta>> = Object.fre
     primaryNav: 'groups',
     messageNamespaces: ['group', 'import', 'monitor'],
   },
-  // Legacy route kept only as a redirect target into Settings → credentials;
-  // the beforeLoad guard navigates away before any view or catalog loads.
-  'access-keys': {
-    titleKey: 'shell.settings',
-    requiresAuth: true,
-    adminOnly: true,
-    primaryNav: 'settings',
-  },
   monitor: {
     titleKey: 'shell.monitor',
     requiresAuth: true,

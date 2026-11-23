@@ -5,20 +5,15 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	lmfpd "github.com/Ikaleio/lm-detector/sdk/go"
 )
 
 const modelTraceChallengeCount = 3
 
-// ModelTraceConfig is retained for source compatibility with old callers.
-// Only Enabled is used by the local detector; external service fields are retired.
+// ModelTraceConfig controls the in-process fingerprint detector.
 type ModelTraceConfig struct {
-	Enabled        bool
-	BaseURL        string
-	Token          string
-	RequestTimeout time.Duration
+	Enabled bool
 }
 
 type GenericModelTraceConfig struct {

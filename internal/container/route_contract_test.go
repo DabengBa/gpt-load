@@ -263,6 +263,12 @@ func TestHTTPRoutesReturnMethodNotAllowedBeforePlaneAuthentication(t *testing.T)
 			wantMethods: []string{http.MethodGet},
 		},
 		{
+			name:        "retired group detail update",
+			method:      http.MethodPut,
+			target:      "/api/groups/1",
+			wantMethods: []string{http.MethodDelete, http.MethodGet},
+		},
+		{
 			name:        "retired model price collection delete",
 			method:      http.MethodDelete,
 			target:      "/api/model-prices",

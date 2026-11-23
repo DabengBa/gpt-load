@@ -27,7 +27,7 @@ func TestServerServesSameIndexForExplicitPageRoutes(t *testing.T) {
 
 	var firstBody string
 	for _, target := range []string{
-		"/", "/login", "/import", "/groups/42", "/access-keys", "/monitor?tab=logs", "/schedule", "/settings",
+		"/", "/login", "/import", "/groups/42", "/monitor?tab=logs", "/schedule", "/settings?section=credentials",
 	} {
 		recorder := httptest.NewRecorder()
 		engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
@@ -59,6 +59,19 @@ func TestServerServesSameIndexForExplicitPageRoutes(t *testing.T) {
 		if got != wantCSP {
 			t.Fatalf("GET %s CSP = %q, want %q", target, got, wantCSP)
 		}
+	}
+}
+
+func TestServerRetiresAccessKeysPageRoute(t *testing.T) {
+	engine := testEngine(newServer(fstest.MapFS{
+		"dist/index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>test index</title>")},
+	}, "dist"))
+	request := httptest.NewRequest(http.MethodGet, "/access-keys?action=edit&access_key_id=1", nil)
+	request.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNotFound || recorder.Header().Get("Location") != "" {
+		t.Fatalf("GET %s = %d Location %q, want 404 without redirect", request.URL, recorder.Code, recorder.Header().Get("Location"))
 	}
 }
 

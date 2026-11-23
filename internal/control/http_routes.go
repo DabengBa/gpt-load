@@ -241,12 +241,6 @@ func (s *Server) HTTPModule() httproute.Module {
 				s.handleUpdateGroupConfiguration,
 			),
 			controlRoute(
-				"control.groups.retired-update",
-				http.MethodPut,
-				"/groups/:group_id",
-				controlRouteNotFound,
-			),
-			controlRoute(
 				"control.groups.models.get",
 				http.MethodGet,
 				"/groups/:group_id/models",
