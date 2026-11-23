@@ -14,14 +14,9 @@ import {
 import { useEffect } from 'react'
 
 import type { MessageNamespace } from '@shared/i18n/namespaces'
-import { pagePath, pageRouteEntries } from '@shared/routing/page-routes'
+import { pageRouteEntries } from '@shared/routing/page-routes'
 import { pageRouteMetaFor, type PageRouteMeta } from '@shared/routing/route-meta'
 import { sharedPageRouteNames } from '@shared/routing/route-names'
-import {
-  parseAccessKeyCollectionRouteQuery,
-  parseAccessKeyDrawerRoute,
-  serializeAccessKeyCollectionRouteQuery,
-} from '@shared/routing/access-key-collection-route'
 import {
   parseGroupCollectionRouteQuery,
   serializeGroupCollectionRouteQuery,
@@ -185,8 +180,7 @@ function groupsSearch(search: Record<string, unknown>) {
 // Sparse like groupsSearch: routing → {}, everything else → { section }.
 // Invalid/repeated values canonicalize to the bare '/settings' URL via the
 // same mechanism, matching the classic router.replace behavior. The
-// credentials section keeps the access-key collection + drawer params
-// (q/status/page/action/access_key_id) that migrated from /access-keys.
+// credentials section keeps the access-key collection and drawer params.
 function settingsSearch(search: Record<string, unknown>) {
   const query = search as SharedRouteQuery
   const section = parseSettingsRouteSection(query)
@@ -201,24 +195,6 @@ function settingsSearch(search: Record<string, unknown>) {
 // serializes away).
 function homeSearch(search: Record<string, unknown>) {
   return serializeHomeRouteQuery(parseHomeRouteQuery(search as SharedRouteQuery))
-}
-
-// /access-keys is a legacy alias: the management UI lives in
-// Settings → credentials, so every visit forwards there while preserving the
-// collection filters and drawer deep links it carried.
-function accessKeysRedirectTarget(search: SharedRouteQuery): string {
-  const query = serializeSettingsRouteQuery('credentials', parseSettingsCredentialsRoute(search))
-  return `${pagePath('settings')}${stringifySharedRouteSearch(query)}`
-}
-
-// Sparse canonical search: q/status/page serialize away at defaults; the
-// drawer pair (action, access_key_id) only survives a well-formed parse.
-function accessKeysSearch(search: Record<string, unknown>) {
-  const query = search as SharedRouteQuery
-  return serializeAccessKeyCollectionRouteQuery(
-    parseAccessKeyCollectionRouteQuery(query),
-    parseAccessKeyDrawerRoute(query),
-  )
 }
 
 // Sparse canonical search: the shared monitor codec owns the usage query
@@ -259,7 +235,6 @@ const searchValidators: Partial<
 > = {
   [sharedPageRouteNames.login]: loginSearch,
   [sharedPageRouteNames.home]: homeSearch,
-  [sharedPageRouteNames.accessKeys]: accessKeysSearch,
   [sharedPageRouteNames.groups]: groupsSearch,
   [sharedPageRouteNames.groupDetail]: groupDetailSearch,
   [sharedPageRouteNames.import]: importSearch,
@@ -278,9 +253,6 @@ const routeViews: Record<RouteName, RouteComponent> = {
     () => import('../features/home/HomeView'),
     'HomeView',
   ),
-  // Never rendered — beforeLoad always redirects /access-keys to the
-  // credentials section on /settings.
-  [sharedPageRouteNames.accessKeys]: () => null,
   [sharedPageRouteNames.groups]: lazyRouteComponent(
     () => import('../features/groups/GroupsView'),
     'GroupsView',
@@ -343,16 +315,6 @@ const pageRoutes = astryxRoutePaths(pageRouteEntries).map(({ name, path }) => {
     beforeLoad: async ({ context, location }) => {
       if (meta.adminOnly && context.services.authSession.getPrincipalType() === 'access_key') {
         throw redirect({ href: '/', replace: true })
-      }
-      if (name === sharedPageRouteNames.accessKeys) {
-        const target = accessKeysRedirectTarget(location.search as SharedRouteQuery)
-        if (!context.services.authSession.hasCredential()) {
-          throw redirect({
-            href: `/login?redirect=${encodeURIComponent(target)}`,
-            replace: true,
-          })
-        }
-        throw redirect({ href: target, replace: true })
       }
       if (meta.requiresAuth && !context.services.authSession.hasCredential()) {
         throw redirect({

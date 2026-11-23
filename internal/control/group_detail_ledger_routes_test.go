@@ -43,7 +43,7 @@ func TestGroupDetailLedgerRoutesReplaceLegacyContracts(t *testing.T) {
 		`{"name":"retired"}`,
 		"Bearer test-auth-key",
 	)
-	assertGroupDetailLedgerEnvelope(t, legacy, http.StatusNotFound, "ROUTE_NOT_FOUND")
+	assertGroupDetailLedgerEnvelope(t, legacy, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED")
 
 	canonical := []struct {
 		name   string

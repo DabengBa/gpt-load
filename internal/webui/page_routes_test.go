@@ -118,7 +118,6 @@ func TestEmbeddedPageRouteManifestContainsCurrentPages(t *testing.T) {
 		"groups":        "/groups",
 		"announcements": "/announcements",
 		"group-detail":  "/groups/:id",
-		"access-keys":   "/access-keys",
 		"monitor":       "/monitor",
 		"schedule":      "/schedule",
 		"logs":          "/logs",

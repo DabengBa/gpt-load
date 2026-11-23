@@ -394,18 +394,18 @@ test('credential tasks have distinct surfaces and mobile filters remain usable',
     await section.screenshot({ path: '/tmp/credentials-dark-mobile.png' })
 })
 
-test('redirects the legacy /access-keys page into Settings → credentials', async ({ page }) => {
+test('retired access key URLs show not found without redirecting', async ({ page }) => {
   await mockAccessKeys(page)
-  await page.goto('/access-keys', { waitUntil: 'commit' })
-  await expectAstryxDocument(page)
-  await expect(page).toHaveURL(/\/settings\?section=credentials$/, { timeout: 60_000 })
-  await expect(page.getByRole('heading', { name: 'Keys and access', exact: true })).toBeVisible()
-  await expect(page.getByRole('table', { name: 'Access key list' })).toBeVisible()
+  for (const path of ['/access-keys', '/access-keys?action=edit&access_key_id=1']) {
+    await page.goto(path)
+    await expect(page.getByRole('heading', { name: 'This page does not exist' })).toBeVisible()
+    await expect(page).toHaveURL((url) => url.pathname + url.search === path)
+  }
 })
 
-test('legacy drawer deep links open the editor inside settings', async ({ page }) => {
+test('credential drawer deep links open the editor inside settings', async ({ page }) => {
   await mockAccessKeys(page)
-  await page.goto('/access-keys?action=edit&access_key_id=1', { waitUntil: 'commit' })
+  await page.goto(`${credentialsPath}&action=edit&access_key_id=1`, { waitUntil: 'commit' })
   await expectAstryxDocument(page)
   await expect(page).toHaveURL(/\/settings\?section=credentials&action=edit&access_key_id=1$/, {
     timeout: 60_000,
@@ -791,14 +791,6 @@ test('disables an agent credential after confirmation', async ({ page }) => {
 
   await expect.poll(() => requests.agentCredentialDisables).toEqual([1])
   await expect(row.getByText('Disabled', { exact: true })).toBeVisible()
-})
-
-test('access_key principals are redirected away from the admin-only page', async ({ page }) => {
-  await mockAccessKeys(page, { principalType: 'access_key' })
-  await page.goto('/access-keys', { waitUntil: 'commit' })
-  // Boot → session validation → AuthGate redirect outruns the default expect
-  // window under cold module transforms; give the URL assertion headroom.
-  await expect(page).not.toHaveURL(/\/access-keys/, { timeout: 60_000 })
 })
 
 test('access_key principals cannot reach the credentials section', async ({ page }) => {

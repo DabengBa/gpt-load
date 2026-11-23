@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
-
 	"strings"
 	"sync"
 	"testing"
@@ -27,141 +25,15 @@ import (
 	"gpt-load/internal/usage"
 )
 
-const modelTraceTestToken = "modeltrace-test-token-0123456789"
-
 func TestModelTraceRunDeadline(t *testing.T) {
 	if got, want := modelTraceRunDeadline, 10*time.Minute; got != want {
 		t.Fatalf("ModelTrace run deadline = %s, want %s", got, want)
 	}
 }
 
-// modelTraceTestService is a faithful stub of the ModelTrace analysis contract:
-// Bearer authentication, GET /api/challenges, POST /api/analyze.
-type modelTraceTestService struct {
-	mu sync.Mutex
-
-	challenges    []modelTraceTestChallenge
-	analyzeCalls  []map[string]any
-	challengeHits int
-	authHeaders   []string
-	analyzeFn     func(map[string]any) (int, map[string]any)
-}
-
-type modelTraceTestChallenge struct {
-	ID            string `json:"id"`
-	ExpectedCount int    `json:"expected_count"`
-	Prompt        string `json:"prompt"`
-}
-
-func newModelTraceTestService(t *testing.T) (*modelTraceTestService, *httptest.Server) {
-	t.Helper()
-	service := &modelTraceTestService{challenges: []modelTraceTestChallenge{
-		{ID: "probe-1-aaa", ExpectedCount: 293, Prompt: "challenge-one"},
-		{ID: "probe-2-bbb", ExpectedCount: 311, Prompt: "challenge-two"},
-		{ID: "probe-3-ccc", ExpectedCount: 327, Prompt: "challenge-three"},
-	}}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		service.mu.Lock()
-		service.authHeaders = append(service.authHeaders, r.Header.Get("Authorization"))
-		service.mu.Unlock()
-		if r.Header.Get("Authorization") != "Bearer "+modelTraceTestToken {
-			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
-			return
-		}
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/challenges":
-			service.mu.Lock()
-			service.challengeHits++
-			challenges := append([]modelTraceTestChallenge(nil), service.challenges...)
-			service.mu.Unlock()
-			writeModelTraceTestJSON(w, http.StatusOK, map[string]any{"challenges": challenges})
-		case r.Method == http.MethodPost && r.URL.Path == "/api/analyze":
-			var payload map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				_, _ = w.Write([]byte(`{"error":"invalid_json"}`))
-				return
-			}
-			service.mu.Lock()
-			service.analyzeCalls = append(service.analyzeCalls, payload)
-			analyzeFn := service.analyzeFn
-			service.mu.Unlock()
-			if analyzeFn != nil {
-				status, body := analyzeFn(payload)
-				writeModelTraceTestJSON(w, status, body)
-				return
-			}
-			writeModelTraceTestJSON(w, http.StatusOK, modelTraceTestAnalysis(payload))
-		default:
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"error":"not_found"}`))
-		}
-	}))
-	t.Cleanup(server.Close)
-	return service, server
-}
-
-func writeModelTraceTestJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
-}
-
-// modelTraceTestAnalysis answers with one candidate per submitted output so a
-// test can assert that every accepted challenge counted toward the calibration.
-func modelTraceTestAnalysis(payload map[string]any) map[string]any {
-	outputs, _ := payload["outputs"].([]any)
-	diagnostics := make([]any, 0, len(outputs))
-	for index, raw := range outputs {
-		output, _ := raw.(map[string]any)
-		diagnostics = append(diagnostics, map[string]any{
-			"prompt_id":       output["prompt_id"],
-			"expected_count":  output["expected_count"],
-			"parsed_numbers":  output["expected_count"],
-			"minimum_numbers": 251,
-			"accepted":        true,
-		})
-		_ = index
-	}
-	return map[string]any{
-		"prediction":             "gpt-5.4",
-		"prediction_name":        "GPT-5.4",
-		"probability":            0.61,
-		"family_prediction":      "gpt",
-		"family_prediction_name": "GPT",
-		"family_probability":     0.72,
-		"used_outputs":           len(outputs),
-		"method":                 "hellinger+ordered",
-		"calibration":            "temperature",
-		"candidates": []any{map[string]any{
-			"model": "gpt-5.4", "display_name": "GPT-5.4", "family": "gpt",
-			"family_name": "GPT", "probability": 0.61,
-			"conditional_probability": 0.85, "profile_similarity": 0.93,
-		}},
-		"families":    map[string]any{"gpt": 0.72, "claude": 0.28},
-		"diagnostics": diagnostics,
-		"bank": map[string]any{
-			"models": 18, "built_at": "2026-10-09T06:24:27.469312+00:00",
-			"bank_sha256": "f267d0513aa06981d024ec5394746fceddf44e4e8a75fa6bf8304255f4b32d6d",
-		},
-		"upstream": map[string]any{
-			"repository": "https://github.com/xqy2006/ModelTrace",
-			"commit":     "6cd4a8ff0f3f4e49d6d6969dd2fbadfa1569fde2",
-		},
-	}
-}
-
-func (service *modelTraceTestService) observed() (challengeHits int, calls []map[string]any) {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	calls = append([]map[string]any(nil), service.analyzeCalls...)
-	return service.challengeHits, calls
-}
-
 // modelTraceChallengeExecutor answers each challenge with a distinct integer
 // sequence, so a test can prove that every challenge was dispatched as its own
-// formal model request and that all accepted answers reached /api/analyze.
+// formal model request.
 type modelTraceChallengeExecutor struct {
 	mu sync.Mutex
 
@@ -242,22 +114,6 @@ func (executor *modelTraceChallengeExecutor) recordedOutputBudgets() []int {
 	return append([]int(nil), executor.outputBudgets...)
 }
 
-// newModelTraceFixture installs one test ModelTrace deployment for the
-// duration of the test. The process configuration is restored on cleanup, and
-// these tests stay serial because that configuration is process-global.
-func newModelTraceFixture(
-	t *testing.T,
-	analyzeServer *httptest.Server,
-) (serviceFixture, func()) {
-	t.Helper()
-	previous := loadModelTraceConfig()
-	t.Cleanup(func() { storeModelTraceConfig(previous) })
-	storeModelTraceConfig(&ModelTraceConfig{
-		Enabled: true, BaseURL: analyzeServer.URL, Token: modelTraceTestToken,
-	})
-	return newServiceFixture(t), func() {}
-}
-
 // useModelTraceConfig installs a process configuration for one test.
 func useModelTraceConfig(t *testing.T, cfg *ModelTraceConfig) {
 	t.Helper()
@@ -271,8 +127,8 @@ func modelTraceTestRequest(groupID uint) ModelTraceRequest {
 }
 
 func TestModelTraceProbeRecordsEveryChallengeAsFormalRequest(t *testing.T) {
-	analysis, server := newModelTraceTestService(t)
-	fixture, _ := newModelTraceFixture(t, server)
+	useModelTraceConfig(t, &ModelTraceConfig{Enabled: true})
+	fixture := newServiceFixture(t)
 	groupID := createGroupWithCredentials(t, fixture, "modeltrace-challenge-secret")
 	executor := &modelTraceChallengeExecutor{}
 	fixture.service.executor = executor
@@ -281,20 +137,20 @@ func TestModelTraceProbeRecordsEveryChallengeAsFormalRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunModelTraceProbe() error = %v", err)
 	}
-	if len(response.Challenges) != len(analysis.challenges) {
-		t.Fatalf("challenges = %d, want %d", len(response.Challenges), len(analysis.challenges))
+	if len(response.Challenges) != modelTraceChallengeCount {
+		t.Fatalf("challenges = %d, want %d", len(response.Challenges), modelTraceChallengeCount)
 	}
 	if response.Analysis == nil {
 		t.Fatal("analysis is nil")
 	}
-	if response.Analysis.UsedOutputs != len(analysis.challenges) {
-		t.Fatalf("used_outputs = %d, want %d", response.Analysis.UsedOutputs, len(analysis.challenges))
+	if response.Analysis.UsedOutputs != modelTraceChallengeCount {
+		t.Fatalf("used_outputs = %d, want %d", response.Analysis.UsedOutputs, modelTraceChallengeCount)
 	}
 
 	// Every challenge is its own upstream request and its own request-log row.
 	prompts := executor.recordedPrompts()
-	if len(prompts) != len(analysis.challenges) {
-		t.Fatalf("executed challenges = %d, want %d", len(prompts), len(analysis.challenges))
+	if len(prompts) != modelTraceChallengeCount {
+		t.Fatalf("executed challenges = %d, want %d", len(prompts), modelTraceChallengeCount)
 	}
 	for _, budget := range executor.recordedOutputBudgets() {
 		if budget != 4096 {
@@ -302,7 +158,7 @@ func TestModelTraceProbeRecordsEveryChallengeAsFormalRequest(t *testing.T) {
 		}
 	}
 	events := fixture.probeSink.Events()
-	if len(events) != len(analysis.challenges) {
+	if len(events) != modelTraceChallengeCount {
 		t.Fatalf("request log events = %d, want one per challenge", len(events))
 	}
 	logged := make(map[string]telemetry.RequestEvent, len(events))
@@ -348,8 +204,8 @@ func TestModelTraceProbeRecordsEveryChallengeAsFormalRequest(t *testing.T) {
 }
 
 func TestModelTraceProbeKeepsPartialOutputsAndLogsFailures(t *testing.T) {
-	analysis, server := newModelTraceTestService(t)
-	fixture, _ := newModelTraceFixture(t, server)
+	useModelTraceConfig(t, &ModelTraceConfig{Enabled: true})
+	fixture := newServiceFixture(t)
 	groupID := createGroupWithCredentials(t, fixture, "modeltrace-partial-secret")
 	fixture.service.executor = &modelTraceChallengeExecutor{
 		fail: func(index int) bool { return index == 1 },
@@ -375,7 +231,7 @@ func TestModelTraceProbeKeepsPartialOutputsAndLogsFailures(t *testing.T) {
 		t.Fatalf("failed challenges = %d, want 1", failed)
 	}
 	events := fixture.probeSink.Events()
-	if len(events) != len(analysis.challenges) {
+	if len(events) != modelTraceChallengeCount {
 		t.Fatalf("request log events = %d, want one per challenge", len(events))
 	}
 	upstreamFailures := 0
@@ -388,14 +244,14 @@ func TestModelTraceProbeKeepsPartialOutputsAndLogsFailures(t *testing.T) {
 		t.Fatalf("error request-log rows = %d, want the failed challenge", upstreamFailures)
 	}
 
-	if response.Analysis == nil || response.Analysis.UsedOutputs != len(analysis.challenges)-1 {
+	if response.Analysis == nil || response.Analysis.UsedOutputs != modelTraceChallengeCount-1 {
 		t.Fatalf("analysis = %#v, want calibration over the accepted outputs", response.Analysis)
 	}
 }
 
 func TestModelTraceDiagnosticsIdentifyOriginalChallenge(t *testing.T) {
-	_, server := newModelTraceTestService(t)
-	fixture, _ := newModelTraceFixture(t, server)
+	useModelTraceConfig(t, &ModelTraceConfig{Enabled: true})
+	fixture := newServiceFixture(t)
 	groupID := createGroupWithCredentials(t, fixture, "diagnostic-index-secret")
 	previous := generateModelTraceChallenges
 	t.Cleanup(func() { generateModelTraceChallenges = previous })
@@ -437,8 +293,8 @@ func TestModelTraceDiagnosticsIdentifyOriginalChallenge(t *testing.T) {
 }
 
 func TestModelTraceProbeFailsClearlyWithoutUsableOutputs(t *testing.T) {
-	analysis, server := newModelTraceTestService(t)
-	fixture, _ := newModelTraceFixture(t, server)
+	useModelTraceConfig(t, &ModelTraceConfig{Enabled: true})
+	fixture := newServiceFixture(t)
 	groupID := createGroupWithCredentials(t, fixture, "modeltrace-allfailed-secret")
 	fixture.service.executor = &modelTraceChallengeExecutor{
 		fail: func(int) bool { return true },
@@ -454,11 +310,7 @@ func TestModelTraceProbeFailsClearlyWithoutUsableOutputs(t *testing.T) {
 	if response.Failure == nil || *response.Failure != modelTraceFailureNoOutputs {
 		t.Fatalf("failure = %#v, want %q", response.Failure, modelTraceFailureNoOutputs)
 	}
-	_, calls := analysis.observed()
-	if len(calls) != 0 {
-		t.Fatalf("analyze calls = %d, want none without a usable output", len(calls))
-	}
-	if len(fixture.probeSink.Events()) != len(analysis.challenges) {
+	if len(fixture.probeSink.Events()) != modelTraceChallengeCount {
 		t.Fatalf("request log events = %d, want one failed row per challenge",
 			len(fixture.probeSink.Events()))
 	}
@@ -487,8 +339,8 @@ func modelTracePriceTable(t *testing.T, channelID string, input int64) *pricing.
 // dispatched, so a price publication that lands while the challenge is in
 // flight cannot retroactively re-price it.
 func TestModelTraceProbeFreezesPriceTableBeforeDispatch(t *testing.T) {
-	_, server := newModelTraceTestService(t)
-	fixture, _ := newModelTraceFixture(t, server)
+	useModelTraceConfig(t, &ModelTraceConfig{Enabled: true})
+	fixture := newServiceFixture(t)
 	groupID := createGroupWithCredentials(t, fixture, "modeltrace-frozen-price-secret")
 
 	frozenInput := int64(2_000_000_000)
@@ -550,8 +402,8 @@ func TestModelTraceProbeFreezesPriceTableBeforeDispatch(t *testing.T) {
 // TestModelTraceProbePricesAgainstTablePublishedBeforeRun proves the frozen
 // table is the one published when the run starts, not one captured at boot.
 func TestModelTraceProbePricesAgainstTablePublishedBeforeRun(t *testing.T) {
-	_, server := newModelTraceTestService(t)
-	fixture, _ := newModelTraceFixture(t, server)
+	useModelTraceConfig(t, &ModelTraceConfig{Enabled: true})
+	fixture := newServiceFixture(t)
 	groupID := createGroupWithCredentials(t, fixture, "modeltrace-published-price-secret")
 
 	fixture.priceRuntime.Publish(modelTracePriceTable(t, string(channel.OpenAI), 3_000_000_000))
@@ -581,8 +433,8 @@ func TestModelTraceProbePricesAgainstTablePublishedBeforeRun(t *testing.T) {
 // table only makes the challenge unpriced: the challenge still runs, still
 // logs, and never becomes free.
 func TestModelTraceProbeSucceedsWithoutPublishedPriceTable(t *testing.T) {
-	_, server := newModelTraceTestService(t)
-	fixture, _ := newModelTraceFixture(t, server)
+	useModelTraceConfig(t, &ModelTraceConfig{Enabled: true})
+	fixture := newServiceFixture(t)
 	groupID := createGroupWithCredentials(t, fixture, "modeltrace-unpriced-secret")
 	fixture.service.executor = &modelTraceChallengeExecutor{
 		usage: &execution.UsageEvidence{Normalized: usage.Result{
@@ -611,8 +463,8 @@ func TestModelTraceProbeSucceedsWithoutPublishedPriceTable(t *testing.T) {
 }
 
 func TestModelTraceProbeDoesNotChangeRouteHealthOrRecover(t *testing.T) {
-	_, server := newModelTraceTestService(t)
-	fixture, _ := newModelTraceFixture(t, server)
+	useModelTraceConfig(t, &ModelTraceConfig{Enabled: true})
+	fixture := newServiceFixture(t)
 	groupID := createProbeGroup(t, fixture, []string{probeTestModel})
 	group := fixture.manager.Current().Groups[groupID]
 	entryKey := state.RouteEntryKey{
@@ -654,10 +506,11 @@ func TestModelTraceProbeDoesNotChangeRouteHealthOrRecover(t *testing.T) {
 }
 
 func TestModelTraceProbeRejectsUnsupportedTarget(t *testing.T) {
-	analysis, server := newModelTraceTestService(t)
-	fixture, _ := newModelTraceFixture(t, server)
+	useModelTraceConfig(t, &ModelTraceConfig{Enabled: true})
+	fixture := newServiceFixture(t)
 	groupID := createGroupWithCredentials(t, fixture, "modeltrace-unsupported-secret")
-	fixture.service.executor = &modelTraceChallengeExecutor{}
+	executor := &modelTraceChallengeExecutor{}
+	fixture.service.executor = executor
 
 	tests := []struct {
 		name    string
@@ -677,15 +530,15 @@ func TestModelTraceProbeRejectsUnsupportedTarget(t *testing.T) {
 			}
 		})
 	}
-	if hits, _ := analysis.observed(); hits != 0 {
-		t.Fatalf("challenge fetches = %d, want none for an unsupported target", hits)
+	if prompts := executor.recordedPrompts(); len(prompts) != 0 {
+		t.Fatalf("executed challenges = %d, want none for an unsupported target", len(prompts))
 	}
 }
 
 func TestModelTraceProbeNeverExposesCredentialMaterial(t *testing.T) {
 	const secret = "sk-modeltrace-secret-material"
-	_, server := newModelTraceTestService(t)
-	fixture, _ := newModelTraceFixture(t, server)
+	useModelTraceConfig(t, &ModelTraceConfig{Enabled: true})
+	fixture := newServiceFixture(t)
 	groupID := createGroupWithCredentials(t, fixture, secret)
 	fixture.service.executor = &modelTraceChallengeExecutor{}
 
@@ -704,8 +557,8 @@ func TestModelTraceProbeNeverExposesCredentialMaterial(t *testing.T) {
 }
 
 func TestModelTraceProbeResponseContract(t *testing.T) {
-	_, server := newModelTraceTestService(t)
-	fixture, _ := newModelTraceFixture(t, server)
+	useModelTraceConfig(t, &ModelTraceConfig{Enabled: true})
+	fixture := newServiceFixture(t)
 	groupID := createGroupWithCredentials(t, fixture, "modeltrace-contract-secret")
 	fixture.service.executor = &modelTraceChallengeExecutor{}
 
@@ -762,13 +615,13 @@ func TestModelTraceRoutesAndConfigContract(t *testing.T) {
 		return map[string]string{
 			"MODELTRACE_ENABLED":         "true",
 			"MODELTRACE_URL":             "http://modeltrace:8080/",
-			"MODELTRACE_TOKEN":           modelTraceTestToken,
-			"MODELTRACE_TIMEOUT_SECONDS": "45",
+			"MODELTRACE_TOKEN":           "ignored-service-token",
+			"MODELTRACE_TIMEOUT_SECONDS": "ignored-invalid-timeout",
 		}[key]
 	}); err != nil {
 		t.Fatalf("loadModelTraceConfigFromEnvironment() error = %v", err)
 	}
-	if loaded := loadModelTraceConfig(); loaded == nil || !loaded.Enabled || loaded.BaseURL != "" || loaded.Token != "" {
-		t.Fatalf("local detector config = %#v, want enabled without service credentials", loaded)
+	if loaded := loadModelTraceConfig(); loaded == nil || !loaded.Enabled {
+		t.Fatalf("local detector config = %#v, want enabled despite retired service settings", loaded)
 	}
 }
