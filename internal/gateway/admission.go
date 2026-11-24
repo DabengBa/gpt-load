@@ -226,6 +226,14 @@ func (handler *Handler) admitRequest(
 		ExternalModel:            metadata.Model,
 		AccessKey:                accessKey,
 	}
+	var resourceBinding state.ResponseBinding
+	if metadata.ResponseResourceID != "" {
+		var found bool
+		resourceBinding, found = handler.responseBindings.Lookup(accessKey.ID, metadata.ResponseResourceID)
+		if !found {
+			return rejectAdmission(reasonResponseResourceNotFound).withInspected(inspected)
+		}
+	}
 	candidateGroupIDs := scheduler.CandidateGroupIDsForQuery(snapshot, query)
 	capturedRefs := handler.registry.CaptureActiveCredentialRefs(candidateGroupIDs)
 	allowedCredentialRefs := make(map[uint]state.CredentialRef, len(capturedRefs))
@@ -239,7 +247,13 @@ func (handler *Handler) admitRequest(
 	}
 	query.AllowedCredentialIDs = allowedCredentialIDs
 	var requestAff requestAffinity
-	if metadata.PreviousResponseID != "" {
+	if metadata.ResponseResourceID != "" {
+		clear(allowedCredentialIDs)
+		if owner, exists := allowedCredentialRefs[resourceBinding.CredentialID]; exists &&
+			owner.GroupID == resourceBinding.GroupID && owner.IdentityGeneration == resourceBinding.IdentityGeneration {
+			allowedCredentialIDs[owner.ID] = struct{}{}
+		}
+	} else if metadata.PreviousResponseID != "" {
 		binding, found := handler.responseBindings.Lookup(accessKey.ID, metadata.PreviousResponseID)
 		if !found {
 			return rejectAdmission(reasonResponseBindingNotFound).withInspected(inspected)
