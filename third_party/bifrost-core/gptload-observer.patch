@@ -1,9 +1,9 @@
 --- a/bifrost.go
 +++ b/bifrost.go
-@@ -7394 +7394 @@
+@@ -7455 +7455 @@
 -					// are correctly linked in the trace hierarchy.
 +					// are correctlyed in the trace hierarchy.
-@@ -7696,0 +7697,14 @@
+@@ -7757,0 +7758,14 @@
 +		// GPT-Load clears fallbacks and retries, so startup (created/in_progress)
 +		// events are delivered immediately instead of being held for a recovery
 +		// that cannot happen. When a fallback or a further attempt remains, the
@@ -18,22 +18,22 @@
 +			}
 +			checkPreamble = hasFallbacks || attempts < config.NetworkConfig.MaxRetries+extraAttempts
 +		}
-@@ -7887 +7901,2 @@
+@@ -7948 +7962,2 @@
 -		if !shouldRetry && !strippedEncryptedContent && shouldStripReasoningAfterClientError(bifrostError) &&
 +		disableReasoningStripRetry, _ := ctx.Value(schemas.BifrostContextKeyDisableReasoningStripRetry).(bool)
 +		if !disableReasoningStripRetry && !shouldRetry && !strippedEncryptedContent && shouldStripReasoningAfterClientError(bifrostError) &&
-@@ -8876,0 +8892,3 @@
+@@ -8976,0 +8992,3 @@
 +	if responsesRequestHasCacheIntent(r) {
 +		return r
 +	}
-@@ -8882 +8900,5 @@
+@@ -8982 +9000,5 @@
 -	cp.Input = providerUtils.InjectResponsesCacheBreakpointsSkipping(promptCache, r.Input, injectedMCPInstructionsResponsesIndex(ctx, r.Input))
 +	if schemas.ResolveBaseProvider(ctx, provider) == schemas.Anthropic {
 +		cp.Input = providerUtils.InjectLastResponsesCacheBreakpointSkipping(promptCache, r.Input, injectedMCPInstructionsResponsesIndex(ctx, r.Input))
 +	} else {
 +		cp.Input = providerUtils.InjectResponsesCacheBreakpointsSkipping(promptCache, r.Input, injectedMCPInstructionsResponsesIndex(ctx, r.Input))
 +	}
-@@ -8885,0 +8908,25 @@
+@@ -8985,0 +9008,25 @@
 +func responsesRequestHasCacheIntent(r *schemas.BifrostResponsesRequest) bool {
 +	if r == nil || r.Params == nil {
 +		return false
@@ -59,20 +59,20 @@
 +	return false
 +}
 +
-@@ -8887,3 +8934,3 @@
+@@ -8987,3 +9034,3 @@
 -// billing metadata restored for Anthropic models, prompt-cache breakpoints
 -// injected, then embedded client tools promoted and namespace
 -// tools flattened when the target wire does not understand them. All steps are copy-on-write, so the shared
 +// billing metadata restored for Anthropic models, embedded client tools promoted and namespace
 +// tools flattened when the target wire does not understand them, then cache breakpoints
 +// injected after all explicit tool markers are visible. All steps are copy-on-write, so the shared
-@@ -8974 +9020,0 @@
+@@ -9071 +9117,0 @@
 -	r = promptCacheResponsesRequest(ctx, config, provider.GetProviderKey(), r)
-@@ -9003,0 +9050,3 @@
+@@ -9105,0 +9152,3 @@
 +	// Cache breakpoints go in after every explicit tool marker is visible; the
 +	// skipped item is the MCP instructions message GPT-Load did not write.
 +	r = promptCacheResponsesRequest(ctx, config, provider.GetProviderKey(), r)
-@@ -9109,0 +9159,10 @@
+@@ -9211,0 +9261,10 @@
 +	}
 +	if r.Params != nil {
 +		if r.Params.CacheControl != nil {
@@ -85,23 +85,33 @@
 +		}
 --- a/injectedtools.go
 +++ b/injectedtools.go
-@@ -490,0 +491 @@
+@@ -494,0 +495 @@
 +	contexts ...*schemas.BifrostContext,
-@@ -498,0 +500,3 @@
+@@ -502,0 +504,3 @@
 +			if len(contexts) > 0 {
 +				schemas.SetReportedUsageSnapshot(contexts[0], bifrostErr.ExtraFields.BilledUsage)
 +			}
-@@ -516,0 +521,3 @@
+@@ -520,0 +525,3 @@
 +			if len(contexts) > 0 {
 +				schemas.SetReportedUsageSnapshot(contexts[0], resp.Usage.ToBifrostLLMUsage())
 +			}
-@@ -519,0 +527,3 @@
+@@ -523,0 +531,3 @@
 +		if len(contexts) > 0 {
 +			schemas.SetReportedUsageSnapshot(contexts[0], usage)
 +		}
-@@ -781 +791 @@
+@@ -785 +795 @@
 -		}, exec)
 +		}, exec, ctx)
+@@ -931 +941 @@
+-}
+\ No newline at end of file
++}
+--- a/injectedtools_test.go
++++ b/injectedtools_test.go
+@@ -1097 +1097 @@
+-}
+\ No newline at end of file
++}
 --- a/injectedtoolstream.go
 +++ b/injectedtoolstream.go
 @@ -394,0 +395 @@
@@ -341,6 +351,12 @@
 @@ -740 +740 @@
 -	// Now delete the file
 +		// Now delete the file
+--- a/internal/llmtests/cross_provider_scenarios.go
++++ b/internal/llmtests/cross_provider_scenarios.go
+@@ -1087 +1087 @@
+-}
+\ No newline at end of file
++}
 --- a/internal/llmtests/multi_turn_conversation.go
 +++ b/internal/llmtests/multi_turn_conversation.go
 @@ -136,4 +136,4 @@
@@ -839,9 +855,20 @@
 @@ -92 +92 @@
 -				"source": "test",
 +				"source":    "test",
+--- a/mcpsdk_test.go
++++ b/mcpsdk_test.go
+@@ -75,4 +75,4 @@
+-	url         string
+-	mu          sync.Mutex
+-	calls       map[string]int
+-	handshakes  atomic.Int64 // connection handshakes: initialize, or server/discover on the modern protocol
++	url        string
++	mu         sync.Mutex
++	calls      map[string]int
++	handshakes atomic.Int64 // connection handshakes: initialize, or server/discover on the modern protocol
 --- a/promptcachedispatch_test.go
 +++ b/promptcachedispatch_test.go
-@@ -236,0 +237,51 @@
+@@ -690,0 +691,51 @@
 +func TestPromptCacheResponsesRequest_MarksLatestToolResultWithoutMutatingHistory(t *testing.T) {
 +	callID, output := "call_1", "tool output"
 +	toolOutputType := schemas.ResponsesMessageTypeFunctionCallOutput
@@ -893,14 +920,14 @@
 +	}
 +}
 +
-@@ -398,0 +450,3 @@
+@@ -852,0 +904,3 @@
 +		// GPT-Load marks the latest cacheable item on Anthropic, so the auto
 +		// marker belongs on the caller's last message; the injected MCP
 +		// instructions must never become the breakpoint.
-@@ -400 +454 @@
+@@ -854 +908 @@
 -		assert.True(t, hasMarker(out.Input[1]), "the auto marker did not land on the caller's first block")
 +		assert.True(t, hasMarker(out.Input[2]), "the auto marker did not land on the caller's latest block")
-@@ -696,0 +751,30 @@
+@@ -1221,0 +1276,30 @@
 +}
 +
 +func TestPromptCacheResponsesRequest_AnthropicLatestAndFallbackIsolation(t *testing.T) {
@@ -933,24 +960,47 @@
 +	}
 --- a/providers/anthropic/anthropic.go
 +++ b/providers/anthropic/anthropic.go
-@@ -1018 +1018 @@
+@@ -1169 +1169 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -1702 +1702 @@
+@@ -1853 +1853 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+--- a/providers/anthropic/chat_test.go
++++ b/providers/anthropic/chat_test.go
+@@ -2898,4 +2898,4 @@
+-		{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr("chart below")},
+-		{Type: schemas.ChatContentBlockTypeImage, ImageURLStruct: &schemas.ChatInputImage{URL: "data:image/png;base64,iVBORw0KGgo="}},
+-		{Type: schemas.ChatContentBlockTypeInputAudio, InputAudio: &schemas.ChatInputAudio{Data: "SUQz", Format: schemas.Ptr("mp3")}},
+-	}}},
++				{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr("chart below")},
++				{Type: schemas.ChatContentBlockTypeImage, ImageURLStruct: &schemas.ChatInputImage{URL: "data:image/png;base64,iVBORw0KGgo="}},
++				{Type: schemas.ChatContentBlockTypeInputAudio, InputAudio: &schemas.ChatInputAudio{Data: "SUQz", Format: schemas.Ptr("mp3")}},
++			}}},
 --- a/providers/anthropic/responses.go
 +++ b/providers/anthropic/responses.go
-@@ -2002 +2001,0 @@
+@@ -2153 +2152,0 @@
 -				role := schemas.ResponsesInputMessageRoleAssistant
-@@ -2017 +2015,0 @@
+@@ -2168 +2166,0 @@
 -					Role: &role,
-@@ -2074 +2071,0 @@
+@@ -2225 +2222,0 @@
 -				role := schemas.ResponsesInputMessageRoleAssistant
-@@ -2088 +2084,0 @@
+@@ -2239 +2235,0 @@
 -					Role: &role,
-@@ -2855 +2850,0 @@
+@@ -3011 +3006,0 @@
 -						storedItem.ResponsesReasoning = nil
+--- a/providers/anthropic/serversidefallback_test.go
++++ b/providers/anthropic/serversidefallback_test.go
+@@ -1554 +1554 @@
+-}
+\ No newline at end of file
++}
+--- a/providers/anthropic/utils_test.go
++++ b/providers/anthropic/utils_test.go
+@@ -6423 +6423 @@
+-}
+\ No newline at end of file
++}
 --- a/providers/anthropic/visiblethinkingresponses_test.go
 +++ b/providers/anthropic/visiblethinkingresponses_test.go
 @@ -3,0 +4 @@
@@ -1056,7 +1106,7 @@
 +}
 --- a/providers/azure/azure.go
 +++ b/providers/azure/azure.go
-@@ -976 +976 @@
+@@ -977 +977 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 --- a/providers/azure/azure_passthrough_test.go
@@ -1065,9 +1115,15 @@
 -}
 \ No newline at end of file
 +}
+--- a/providers/azure/azure_test.go
++++ b/providers/azure/azure_test.go
+@@ -1007 +1007 @@
+-}
+\ No newline at end of file
++}
 --- a/providers/azure/speech.go
 +++ b/providers/azure/speech.go
-@@ -621 +621 @@
+@@ -622 +622 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 --- a/providers/bedrock/adaptivethinkingdisplay_test.go
@@ -1077,22 +1133,22 @@
 +		body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.InvokeBuildConfig(model, false, true, nil))
 --- a/providers/bedrock/bedrock.go
 +++ b/providers/bedrock/bedrock.go
-@@ -4226 +4226 @@
+@@ -4384 +4384 @@
 -		body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, request, provider.invokeBuildConfig(request.Model, false, true, guardrailBody))
 +		body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, request, provider.InvokeBuildConfig(request.Model, false, true, guardrailBody))
-@@ -4580 +4580 @@
+@@ -4790 +4790 @@
 -func (provider *BedrockProvider) invokeBuildConfig(model string, streaming, validateTools bool, guardrailBody map[string]any) anthropic.AnthropicRequestBuildConfig {
 +func (provider *BedrockProvider) InvokeBuildConfig(model string, streaming, validateTools bool, guardrailBody map[string]any) anthropic.AnthropicRequestBuildConfig {
-@@ -4652 +4652 @@
+@@ -4862 +4862 @@
 -		provider.invokeBuildConfig(request.Model, false, false, guardrailBody),
 +		provider.InvokeBuildConfig(request.Model, false, false, guardrailBody),
-@@ -4668 +4668 @@
+@@ -4878 +4878 @@
 -	jsonData, bifrostErr := anthropic.BuildAnthropicChatRequestBody(ctx, request, provider.invokeBuildConfig(request.Model, true, false, guardrailBody))
 +	jsonData, bifrostErr := anthropic.BuildAnthropicChatRequestBody(ctx, request, provider.InvokeBuildConfig(request.Model, true, false, guardrailBody))
-@@ -4700 +4700 @@
+@@ -4910 +4910 @@
 -		provider.invokeBuildConfig(request.Model, false, true, guardrailBody),
 +		provider.InvokeBuildConfig(request.Model, false, true, guardrailBody),
-@@ -4716 +4716 @@
+@@ -4926 +4926 @@
 -	jsonData, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, request, provider.invokeBuildConfig(request.Model, true, true, guardrailBody))
 +	jsonData, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, request, provider.InvokeBuildConfig(request.Model, true, true, guardrailBody))
 --- a/providers/bedrock/cache_points_test.go
@@ -1104,6 +1160,9 @@
 +		{"absent", func() map[string]interface{} {
 +			return map[string]interface{}{"requestMetadata": map[string]string{"k": "v"}}
 +		}},
+@@ -915 +918 @@
+-		model             string
++		model            string
 --- a/providers/bedrock/embedding.go
 +++ b/providers/bedrock/embedding.go
 @@ -805 +805 @@
@@ -1112,58 +1171,83 @@
 +}
 --- a/providers/bedrock/invoke_test.go
 +++ b/providers/bedrock/invoke_test.go
-@@ -1473 +1473 @@
+@@ -1587 +1587 @@
 -	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.invokeBuildConfig(req.Model, false, true, nil))
 +	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.InvokeBuildConfig(req.Model, false, true, nil))
-@@ -2164 +2164 @@
+@@ -1630 +1630 @@
+-	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.invokeBuildConfig(req.Model, false, true, nil))
++	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.InvokeBuildConfig(req.Model, false, true, nil))
+@@ -2221 +2221 @@
+-	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.invokeBuildConfig(req.Model, false, true, nil))
++	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.InvokeBuildConfig(req.Model, false, true, nil))
+@@ -2310 +2310 @@
+-	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.invokeBuildConfig(req.Model, false, true, nil))
++	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.InvokeBuildConfig(req.Model, false, true, nil))
+@@ -2597 +2597 @@
 -	out, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.invokeBuildConfig(req.Model, false, true, nil))
 +	out, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, provider.InvokeBuildConfig(req.Model, false, true, nil))
-@@ -2228 +2228 @@
+@@ -2661 +2661 @@
 -	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, tagged, provider.invokeBuildConfig(tagged.Model, false, true, guardrailBody))
 +	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, tagged, provider.InvokeBuildConfig(tagged.Model, false, true, guardrailBody))
-@@ -2286 +2286 @@
+@@ -2719 +2719 @@
 -	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(schemas.NewBifrostContext(context.Background(), time.Time{}), same, provider.invokeBuildConfig(same.Model, false, true, guardrailBody))
 +	body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(schemas.NewBifrostContext(context.Background(), time.Time{}), same, provider.InvokeBuildConfig(same.Model, false, true, guardrailBody))
-@@ -2463 +2463 @@
+@@ -2896 +2896 @@
 -// invokeBuildConfig strips from the body is rendered as the InvokeModel guardrail request
 +// InvokeBuildConfig strips from the body is rendered as the InvokeModel guardrail request
-@@ -2687 +2687 @@
+@@ -3120 +3120 @@
 -	body, bifrostErr := anthropic.BuildAnthropicChatRequestBody(ctx, tagged, provider.invokeBuildConfig(tagged.Model, false, false, guardrailBody))
 +	body, bifrostErr := anthropic.BuildAnthropicChatRequestBody(ctx, tagged, provider.InvokeBuildConfig(tagged.Model, false, false, guardrailBody))
-@@ -2739 +2739 @@
+@@ -3174 +3174 @@
 -	body, bifrostErr := anthropic.BuildAnthropicChatRequestBody(ctx, tagged, provider.invokeBuildConfig(tagged.Model, false, false, guardrailBody))
 +	body, bifrostErr := anthropic.BuildAnthropicChatRequestBody(ctx, tagged, provider.InvokeBuildConfig(tagged.Model, false, false, guardrailBody))
-@@ -3235 +3235 @@
+@@ -3676 +3676 @@
 -	config := provider.invokeBuildConfig("us.anthropic.claude-sonnet-4-6", false, false, nil)
 +	config := provider.InvokeBuildConfig("us.anthropic.claude-sonnet-4-6", false, false, nil)
---- a/providers/bedrock/transport_test.go
-+++ b/providers/bedrock/transport_test.go
-@@ -345 +345 @@
--
-+
+@@ -3759 +3759 @@
+-		body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, (&BedrockProvider{}).invokeBuildConfig(req.Model, false, true, nil))
++		body, bifrostErr := anthropic.BuildAnthropicResponsesRequestBody(ctx, req, (&BedrockProvider{}).InvokeBuildConfig(req.Model, false, true, nil))
+--- a/providers/bedrock/toolresultstatus_test.go
++++ b/providers/bedrock/toolresultstatus_test.go
+@@ -221,5 +221,5 @@
+-		Content:         &schemas.ChatMessageContent{ContentBlocks: []schemas.ChatContentBlock{
+-		{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr("chart below")},
+-		{Type: schemas.ChatContentBlockTypeImage, ImageURLStruct: &schemas.ChatInputImage{URL: "data:image/png;base64,iVBORw0KGgo="}},
+-		{Type: schemas.ChatContentBlockTypeInputAudio, InputAudio: &schemas.ChatInputAudio{Data: "SUQz", Format: schemas.Ptr("mp3")}},
+-	}},
++		Content: &schemas.ChatMessageContent{ContentBlocks: []schemas.ChatContentBlock{
++			{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr("chart below")},
++			{Type: schemas.ChatContentBlockTypeImage, ImageURLStruct: &schemas.ChatInputImage{URL: "data:image/png;base64,iVBORw0KGgo="}},
++			{Type: schemas.ChatContentBlockTypeInputAudio, InputAudio: &schemas.ChatInputAudio{Data: "SUQz", Format: schemas.Ptr("mp3")}},
++		}},
 --- a/providers/bedrock/types.go
 +++ b/providers/bedrock/types.go
-@@ -1827 +1827 @@
--}
-\ No newline at end of file
-+}
---- a/providers/bedrock/utils.go
-+++ b/providers/bedrock/utils.go
-@@ -4134 +4134 @@
+@@ -1852 +1852 @@
 -}
 \ No newline at end of file
 +}
 --- a/providers/byteplus/byteplus.go
 +++ b/providers/byteplus/byteplus.go
-@@ -651 +651 @@
+@@ -652 +652 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+--- a/providers/cohere/chat_test.go
++++ b/providers/cohere/chat_test.go
+@@ -18,4 +18,4 @@
+-		{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr("chart below")},
+-		{Type: schemas.ChatContentBlockTypeImage, ImageURLStruct: &schemas.ChatInputImage{URL: "data:image/png;base64,iVBORw0KGgo="}},
+-		{Type: schemas.ChatContentBlockTypeInputAudio, InputAudio: &schemas.ChatInputAudio{Data: "SUQz", Format: schemas.Ptr("mp3")}},
+-	}}},
++				{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr("chart below")},
++				{Type: schemas.ChatContentBlockTypeImage, ImageURLStruct: &schemas.ChatInputImage{URL: "data:image/png;base64,iVBORw0KGgo="}},
++				{Type: schemas.ChatContentBlockTypeInputAudio, InputAudio: &schemas.ChatInputAudio{Data: "SUQz", Format: schemas.Ptr("mp3")}},
++			}}},
 --- a/providers/cohere/cohere.go
 +++ b/providers/cohere/cohere.go
-@@ -597 +597 @@
+@@ -598 +598 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -896 +896 @@
+@@ -899 +899 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 --- a/providers/cohere/rerank_test.go
@@ -1194,12 +1278,23 @@
 +}
 --- a/providers/elevenlabs/elevenlabs.go
 +++ b/providers/elevenlabs/elevenlabs.go
-@@ -431 +431 @@
+@@ -458 +458 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+--- a/providers/gemini/chat_test.go
++++ b/providers/gemini/chat_test.go
+@@ -615,4 +615,4 @@
+-		{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr("chart below")},
+-		{Type: schemas.ChatContentBlockTypeImage, ImageURLStruct: &schemas.ChatInputImage{URL: "data:image/png;base64,iVBORw0KGgo="}},
+-		{Type: schemas.ChatContentBlockTypeInputAudio, InputAudio: &schemas.ChatInputAudio{Data: "SUQz", Format: schemas.Ptr("mp3")}},
+-	}}},
++				{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr("chart below")},
++				{Type: schemas.ChatContentBlockTypeImage, ImageURLStruct: &schemas.ChatInputImage{URL: "data:image/png;base64,iVBORw0KGgo="}},
++				{Type: schemas.ChatContentBlockTypeInputAudio, InputAudio: &schemas.ChatInputAudio{Data: "SUQz", Format: schemas.Ptr("mp3")}},
++			}}},
 --- a/providers/gemini/embedding.go
 +++ b/providers/gemini/embedding.go
-@@ -583 +583 @@
+@@ -586 +586 @@
 -}
 \ No newline at end of file
 +}
@@ -1211,16 +1306,16 @@
 +		// raw observer. Materialize it through the observer first; the bytes and
 +		// resp.Body() semantics (no decoding, no size cap) are unchanged.
 +		providerUtils.MaterializeObservedStreamBody(ctx, resp)
-@@ -592 +597 @@
+@@ -593 +598 @@
 -		decompressedReader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		decompressedReader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -1131 +1136 @@
+@@ -1137 +1142 @@
 -		decompressedReader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		decompressedReader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -1630 +1635 @@
+@@ -1794 +1799 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -1916 +1921 @@
+@@ -2084 +2089 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 --- a/providers/gemini/http_observer_stream_error_test.go
@@ -1399,7 +1494,7 @@
 +}
 --- a/providers/gemini/responses.go
 +++ b/providers/gemini/responses.go
-@@ -6003 +6003 @@
+@@ -6148 +6148 @@
 -}
 \ No newline at end of file
 +}
@@ -1459,12 +1554,6 @@
 +				require.NotNil(t, request.GenerationConfig.ThinkingConfig.ThinkingBudget)
 +				assert.Equal(t, *tt.wantBudget, *request.GenerationConfig.ThinkingConfig.ThinkingBudget)
 +			}
---- a/providers/gemini/types.go
-+++ b/providers/gemini/types.go
-@@ -3681 +3681 @@
--}
-\ No newline at end of file
-+}
 --- a/providers/gemini/utils.go
 +++ b/providers/gemini/utils.go
 @@ -205,0 +206,51 @@
@@ -1526,15 +1615,21 @@
 +				Role:  "model",
 --- a/providers/huggingface/huggingface.go
 +++ b/providers/huggingface/huggingface.go
-@@ -1142 +1142 @@
+@@ -1144 +1144 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -1532 +1532 @@
+@@ -1535 +1535 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+--- a/providers/huggingface/huggingface_test.go
++++ b/providers/huggingface/huggingface_test.go
+@@ -132 +132 @@
+-}
+\ No newline at end of file
++}
 --- a/providers/minimax/minimax.go
 +++ b/providers/minimax/minimax.go
-@@ -921 +921 @@
+@@ -922 +922 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 --- a/providers/mistral/mistral.go
@@ -1605,28 +1700,28 @@
 +	DocumentAnnotation *string              `json:"document_annotation,omitempty"`
 --- a/providers/openai/openai.go
 +++ b/providers/openai/openai.go
-@@ -710 +710 @@
+@@ -714 +714 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -1438 +1438 @@
+@@ -1461 +1461 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -2358 +2358 @@
+@@ -2393 +2393 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -3013 +3013 @@
+@@ -3049 +3049 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -3593 +3593 @@
+@@ -3632 +3632 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -4064 +4064 @@
+@@ -4114 +4114 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -5800 +5800 @@
+@@ -5851 +5851 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -8682,0 +8683,8 @@
+@@ -8737,0 +8738,8 @@
 +	// This path forwards encoded bytes unchanged; retain the encoding needed
 +	// by consumers to decode them. Unary Passthrough decodes the body itself.
 +	if encoding := resp.Header.Peek("Content-Encoding"); len(encoding) > 0 {
@@ -1641,7 +1736,7 @@
 -
 --- a/providers/openai/responseslifecycle.go
 +++ b/providers/openai/responseslifecycle.go
-@@ -283 +283 @@
+@@ -284 +284 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 --- a/providers/opencode/errors.go
@@ -1671,8 +1766,10 @@
 +		ExtraFields:   schemas.BifrostResponseExtraFields{},
 --- a/providers/perplexity/responses.go
 +++ b/providers/perplexity/responses.go
-@@ -122 +121,0 @@
--
+@@ -235 +235 @@
+-}
+\ No newline at end of file
++}
 --- a/providers/perplexity/types.go
 +++ b/providers/perplexity/types.go
 @@ -90,8 +90,8 @@
@@ -1706,21 +1803,27 @@
 -
 --- a/providers/replicate/replicate.go
 +++ b/providers/replicate/replicate.go
-@@ -625 +625 @@
+@@ -626 +626 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -975 +975 @@
+@@ -978 +978 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -1377 +1377 @@
+@@ -1382 +1382 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -1978 +1978 @@
+@@ -1972 +1972 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
-@@ -2404 +2404 @@
+@@ -2399 +2399 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+--- a/providers/replicate/responses.go
++++ b/providers/replicate/responses.go
+@@ -303 +303 @@
+-}
+\ No newline at end of file
++}
 --- a/providers/replicate/use_deployments_endpoint_test.go
 +++ b/providers/replicate/use_deployments_endpoint_test.go
 @@ -70 +70 @@
@@ -1728,7 +1831,18 @@
 +		Key:    "x",
 --- a/providers/sarvam/sarvam.go
 +++ b/providers/sarvam/sarvam.go
-@@ -365 +365 @@
+@@ -360 +360 @@
+-		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
++		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
+--- a/providers/sgl/decision.go
++++ b/providers/sgl/decision.go
+@@ -177 +177 @@
+-}
+\ No newline at end of file
++}
+--- a/providers/soniox/soniox.go
++++ b/providers/soniox/soniox.go
+@@ -307 +307 @@
 -		reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +		reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 --- a/providers/utils/fasthttpreplace_test.go
@@ -4150,13 +4264,9 @@
 @@ -369 +422 @@
 -	reader, releaseGzip := DecompressStreamBody(resp)
 +	reader, releaseGzip := DecompressStreamBody(ctx, resp)
---- a/providers/utils/pagination.go
-+++ b/providers/utils/pagination.go
-@@ -120 +119,0 @@
--
 --- a/providers/utils/passthrough_stream.go
 +++ b/providers/utils/passthrough_stream.go
-@@ -88,2 +88,5 @@
+@@ -92,2 +92,5 @@
 -	// Wrap reader with idle timeout to detect stalled streams.
 -	bodyStream, stopIdleTimeout := NewIdleTimeoutReader(rawBodyStream, rawBodyStream, GetStreamIdleTimeout(ctx), ctx)
 +	// Wrap reader with idle timeout to detect stalled streams. The observer
@@ -4173,7 +4283,7 @@
 +// Anthropic can place it on the complete tool_result block. The caller's slice, its
 +// ResponsesMessageContent pointers and the block arrays beneath them are never written
 +// to. That matters because
-@@ -312,0 +315,30 @@
+@@ -478,0 +481,30 @@
 +}
 +
 +// InjectLastResponsesCacheBreakpoint uses the existing explicit-point injector to
@@ -4308,13 +4418,13 @@
 +	reader, releaseGzip := DecompressStreamBody(ctx, resp)
 --- a/providers/utils/utils.go
 +++ b/providers/utils/utils.go
-@@ -466,0 +467,5 @@
+@@ -501,0 +502,5 @@
 +	state := newHTTPObserverState(ctx)
 +	if state != nil {
 +		state.attachToContext(ctx)
 +		state.observeFasthttpRequest(req)
 +	}
-@@ -469 +474,6 @@
+@@ -504 +509,6 @@
 -		return client.Do(req, resp)
 +		err := client.Do(req, resp)
 +		state.observeFasthttpSendResult(resp, err)
@@ -4322,7 +4432,7 @@
 +			state.observeFasthttpBufferedBody(resp)
 +		}
 +		return err
-@@ -475,0 +486,14 @@
+@@ -510,0 +521,14 @@
 +//
 +// Observation boundary: fasthttp performs the redirect loop internally
 +// (unexported doRequestFollowRedirects, one real c.Do per hop), so only the
@@ -4337,13 +4447,13 @@
 +// behavior is pinned by TestRedirectChainOnlyInitialAndFinalAreObservable; the
 +// plan records this as present-but-unreachable rather than as a covered path.
 +// Do not add a second fasthttp fork or alter redirect semantics.
-@@ -477,0 +502,5 @@
+@@ -512,0 +537,5 @@
 +	state := newHTTPObserverState(ctx)
 +	if state != nil {
 +		state.attachToContext(ctx)
 +		state.observeFasthttpRequest(req)
 +	}
-@@ -480 +509,6 @@
+@@ -515 +544,6 @@
 -		return client.DoRedirects(req, resp, maxRedirects)
 +		err := client.DoRedirects(req, resp, maxRedirects)
 +		state.observeFasthttpSendResult(resp, err)
@@ -4351,13 +4461,13 @@
 +			state.observeFasthttpBufferedBody(resp)
 +		}
 +		return err
-@@ -504,0 +539,5 @@
+@@ -539,0 +574,5 @@
 +	state := newHTTPObserverState(ctx)
 +	if state != nil {
 +		state.attachToContext(ctx)
 +		state.observeFasthttpRequest(req)
 +	}
-@@ -509,0 +549,7 @@
+@@ -544,0 +584,7 @@
 +	state.observeFasthttpSendResult(resp, err)
 +	if err == nil {
 +		// A streaming request may still receive a fully buffered response (for
@@ -4365,43 +4475,43 @@
 +		// reader wrappers instead; this call is a no-op for them.
 +		state.observeFasthttpBufferedBody(resp)
 +	}
-@@ -547,0 +594,5 @@
+@@ -582,0 +629,5 @@
 +	state := newHTTPObserverState(req.Context())
 +	if state != nil {
 +		state.attachToContext(req.Context())
 +		state.observeHTTPRequest(req)
 +	}
-@@ -549,0 +601,5 @@
+@@ -584,0 +636,5 @@
 +			// The transport never runs on this path, so no response callback can
 +			// be emitted. Complete the observation as a no-response attempt so
 +			// the source is closed and the observer learns it has no transport
 +			// evidence, instead of waiting for a completion that cannot arrive.
 +			state.complete(ErrStreamFirstTokenTimeout, TerminationNoResponse)
-@@ -565,0 +622 @@
+@@ -600,0 +657 @@
 +	state.observeHTTPResponse(resp, err)
-@@ -567,0 +625,5 @@
+@@ -602,0 +660,5 @@
 +		// Observation sits outside the timing wrapper so the observer never
 +		// observes timing-internal reads, and the timing wrapper stays inner
 +		// (NewIdleTimeoutReader unwraps it; it would not unwrap an observer
 +		// wrapper, so timing must not be hidden behind the observer).
 +		resp.Body = state.wrapReadCloser(resp.Body)
-@@ -2269 +2331 @@
+@@ -2364 +2426 @@
 -func DecompressStreamBody(resp *fasthttp.Response) (io.Reader, func()) {
 +func DecompressStreamBody(ctx context.Context, resp *fasthttp.Response) (io.Reader, func()) {
-@@ -2275,0 +2338,4 @@
+@@ -2370,0 +2433,4 @@
 +	// Observe the raw transport body stream (transfer framing already removed
 +	// by fasthttp, Content-Encoding decoding not yet applied) so that the same
 +	// bytes are seen by the parser reader and, later, by the release drain.
 +	bodyStream = httpObserverStateFromContext(ctx).wrapBody(bodyStream)
-@@ -3944,0 +4011,5 @@
+@@ -4194,0 +4261,5 @@
 +				// Label and complete the attempt for the raw-layer observer. A parser that
 +				// returned early leaves no pending Read for ReleaseStreamingResponse to
 +				// drain, so the close owner owns the termination evidence. Observation-only.
 +				state := httpObserverStateFromContext(ctx)
 +				state.markPendingTermination(TerminationTimeout)
-@@ -3945,0 +4017 @@
+@@ -4195,0 +4267 @@
 +				state.completeIncomplete(ErrStreamFirstTokenTimeout, TerminationTimeout)
-@@ -3970,0 +4043,8 @@
+@@ -4220,0 +4293,8 @@
 +				// Leave a semantic termination label for the raw-layer observer, which
 +				// sees the transport error produced by the close below.
 +				termination := TerminationCancel
@@ -4410,7 +4520,7 @@
 +				}
 +				state := httpObserverStateFromContext(ctx)
 +				state.markPendingTermination(termination)
-@@ -3971,0 +4052,7 @@
+@@ -4221,0 +4302,7 @@
 +				// The close owner also owns the completion. A parser that returned early
 +				// ([DONE]/finish_reason/protocol error) leaves no pending Read, and
 +				// ReleaseStreamingResponse then skips its drain, so without this the
@@ -4418,16 +4528,16 @@
 +				// stream is already closed above, nothing is drained and the close is not
 +				// delayed.
 +				state.completeIncomplete(ctx.Err(), termination)
-@@ -3980,0 +4068,6 @@
+@@ -4230,0 +4318,6 @@
 +					termination := TerminationCancel
 +					if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 +						termination = TerminationTimeout
 +					}
 +					state := httpObserverStateFromContext(ctx)
 +					state.markPendingTermination(termination)
-@@ -3981,0 +4075 @@
+@@ -4231,0 +4325 @@
 +					state.completeIncomplete(ctx.Err(), termination)
-@@ -4103,0 +4198,8 @@
+@@ -4353,0 +4448,8 @@
 +			state := httpObserverStateFromContext(r.ctx)
 +			state.markPendingTermination(TerminationIdleTimeout)
 +			// The idle timer owns this teardown, so it also owns exactly-once
@@ -4436,18 +4546,18 @@
 +			// timer's already-released stream and is observation-only: nothing is
 +			// drained and the close is not delayed.
 +			defer state.completeIncomplete(ErrStreamIdleTimeout, TerminationIdleTimeout)
-@@ -4595,0 +4698,4 @@
+@@ -4856,0 +4959,4 @@
 +		// No stream remains (buffered response already observed by the send
 +		// helper, or the stream was detached by a materializing read). Still
 +		// guarantee an exactly-once termination for an unfinished state.
 +		httpObserverStateFromContext(ctx).completePending()
-@@ -4606,0 +4713,5 @@
+@@ -4867,0 +4974,5 @@
 +		// Another owner (cancel/timeout/idle) already closed the stream and
 +		// skipped the drain. Complete any still-unfinished observation so the
 +		// attempt emits exactly one termination without a second close, a
 +		// drain, or a delayed close.
 +		httpObserverStateFromContext(ctx).completePending()
-@@ -4622,0 +4734,10 @@
+@@ -4883,0 +4995,10 @@
 +		// This close owner labels and completes the observation exactly as the
 +		// cancellation goroutine does: a parser that already returned leaves no
 +		// pending Read, so without this the attempt would carry no termination
@@ -4458,14 +4568,14 @@
 +		}
 +		state := httpObserverStateFromContext(ctx)
 +		state.markPendingTermination(termination)
-@@ -4623,0 +4745 @@
+@@ -4884,0 +5006 @@
 +		state.completeIncomplete(ctx.Err(), termination)
-@@ -4643,0 +4766,2 @@
+@@ -4904,0 +5027,2 @@
 +			state := httpObserverStateFromContext(ctx)
 +			state.markPendingTermination(TerminationClosed)
-@@ -4644,0 +4769 @@
+@@ -4905,0 +5030 @@
 +			state.completeIncomplete(errStreamParkedAfterFinish, TerminationClosed)
-@@ -4645,0 +4771,10 @@
+@@ -4906,0 +5032,10 @@
 +		}
 +		// The drain reads through the same request-scoped observer wrapper that the
 +		// parser used (both wrap resp.BodyStream() at the raw transport layer), so
@@ -4478,10 +4588,10 @@
 +			bodyStream = state.wrapBody(bodyStream)
 --- a/providers/utils/utils_test.go
 +++ b/providers/utils/utils_test.go
-@@ -858 +858 @@
+@@ -863 +863 @@
 -	decompressed, releaseGzip := DecompressStreamBody(resp)
 +	decompressed, releaseGzip := DecompressStreamBody(nil, resp)
-@@ -1202 +1202 @@
+@@ -1207 +1207 @@
 -	reader, releaseGzip := DecompressStreamBody(resp)
 +	reader, releaseGzip := DecompressStreamBody(nil, resp)
 --- a/providers/vertex/embedding.go
@@ -4500,9 +4610,21 @@
 +++ b/providers/vertex/passthroughbody_test.go
 @@ -150 +149,0 @@
 -
+--- a/providers/vllm/decision.go
++++ b/providers/vllm/decision.go
+@@ -171 +171 @@
+-}
+\ No newline at end of file
++}
+--- a/providers/vllm/types.go
++++ b/providers/vllm/types.go
+@@ -25 +25 @@
+-}
+\ No newline at end of file
++}
 --- a/providers/vllm/vllm.go
 +++ b/providers/vllm/vllm.go
-@@ -685 +685 @@
+@@ -686 +686 @@
 -			reader, releaseGzip := providerUtils.DecompressStreamBody(resp)
 +			reader, releaseGzip := providerUtils.DecompressStreamBody(ctx, resp)
 --- a/reportedusage_test.go
@@ -4582,7 +4704,7 @@
 +}
 --- a/schemas/bifrost.go
 +++ b/schemas/bifrost.go
-@@ -263,9 +263,10 @@
+@@ -280,9 +280,10 @@
 -	BifrostContextKeySessionToken       BifrostContextKey = "bifrost-session-token" // string (session token for authentication - set by auth middleware)
 -	BifrostContextKeyAcceptedCredential BifrostContextKey = "bifrost-accepted-credential"
 -	BifrostContextKeyVirtualKey         BifrostContextKey = "x-bf-vk"               // string
@@ -4602,6 +4724,10 @@
 +	BifrostContextKeyRequestID                  BifrostContextKey = "request-id"                             // string
 +	BifrostContextKeyFallbackRequestID          BifrostContextKey = "fallback-request-id"                    // string
 +	BifrostContextKeyBillingNonce               BifrostContextKey = "bifrost-billing-nonce"                  // string (internally minted per physical HTTP request; makes the billing-idempotency key unforgeable since request-id may be caller-supplied via x-request-id. Never read from headers, never echoed to the caller - DO NOT SET THIS MANUALLY)
+@@ -2567 +2568 @@
+-}
+\ No newline at end of file
++}
 --- a/schemas/containers.go
 +++ b/schemas/containers.go
 @@ -150,3 +150,3 @@
@@ -4613,7 +4739,8 @@
 +	Path   *string `json:"file_path,omitempty"` // Path for the file in the container
 --- a/schemas/context.go
 +++ b/schemas/context.go
-@@ -21,36 +21,37 @@
+@@ -21,47 +21,48 @@
+-	BifrostContextKeyStreamUsageProvisional:      {},
 -	BifrostContextKeyVirtualKey:              {},
 -	BifrostContextKeyAPIKeyName:              {},
 -	BifrostContextKeyAPIKeyID:                {},
@@ -4638,6 +4765,14 @@
 -	BifrostContextKeyStreamAttemptAbort:      {},
 -	BifrostContextKeyStreamCommitWatch:       {},
 -	BifrostContextKeyMCPHealthCheckRequest:   {},
+-	BifrostContextKeyMCPCallerCapabilities:   {},
+-	BifrostContextKeyMCPInputResumption:      {},
+-	BifrostContextKeyMCPRoundTripID:          {},
+-	BifrostContextKeyMCPRequestedToolName:    {},
+-	BifrostContextKeyMCPToolUIResourceURI:    {},
+-	BifrostContextKeyMCPToolAppOnly:          {},
+-	BifrostContextKeyMCPGatewayClient:        {},
+-	BifrostContextKeyMCPToolListing:          {},
 -	BifrostContextKeyMCPUnattendedExecution:  {},
 -	BifrostContextKeyInjectedToolsExecuted:   {},
 -	BifrostContextKeyUpstreamLatency:         {},
@@ -4647,14 +4782,17 @@
 -	BifrostContextKeyRequestedModel:          {},
 -	BifrostContextKeyProviderProxyConfig:     {},
 -	BifrostContextKeyMCPInboundBearer:        {},
+-	BifrostContextKeyOpencodeSession:         {},
 -	BifrostContextKeyAuthCredential:          {},
 -	BifrostContextKeyMCPAgentServedRoute:     {},
 -	BifrostContextKeyMCPInstructionsText:     {},
+-	BifrostContextKeyClientIP:                {},
++	BifrostContextKeyStreamUsageProvisional:     {},
 +	BifrostContextKeyVirtualKey:                 {},
 +	BifrostContextKeyAPIKeyName:                 {},
 +	BifrostContextKeyAPIKeyID:                   {},
-+	BifrostContextKeyDirectKey:                  {},
 +	BifrostContextKeyDisableReasoningStripRetry: {},
++	BifrostContextKeyDirectKey:                  {},
 +	BifrostContextKeyRequestID:                  {},
 +	BifrostContextKeyFallbackRequestID:          {},
 +	BifrostContextKeyBillingNonce:               {},
@@ -4675,6 +4813,14 @@
 +	BifrostContextKeyStreamAttemptAbort:         {},
 +	BifrostContextKeyStreamCommitWatch:          {},
 +	BifrostContextKeyMCPHealthCheckRequest:      {},
++	BifrostContextKeyMCPCallerCapabilities:      {},
++	BifrostContextKeyMCPInputResumption:         {},
++	BifrostContextKeyMCPRoundTripID:             {},
++	BifrostContextKeyMCPRequestedToolName:       {},
++	BifrostContextKeyMCPToolUIResourceURI:       {},
++	BifrostContextKeyMCPToolAppOnly:             {},
++	BifrostContextKeyMCPGatewayClient:           {},
++	BifrostContextKeyMCPToolListing:             {},
 +	BifrostContextKeyMCPUnattendedExecution:     {},
 +	BifrostContextKeyInjectedToolsExecuted:      {},
 +	BifrostContextKeyUpstreamLatency:            {},
@@ -4684,9 +4830,11 @@
 +	BifrostContextKeyRequestedModel:             {},
 +	BifrostContextKeyProviderProxyConfig:        {},
 +	BifrostContextKeyMCPInboundBearer:           {},
++	BifrostContextKeyOpencodeSession:            {},
 +	BifrostContextKeyAuthCredential:             {},
 +	BifrostContextKeyMCPAgentServedRoute:        {},
 +	BifrostContextKeyMCPInstructionsText:        {},
++	BifrostContextKeyClientIP:                   {},
 --- a/schemas/context_fasthttp_test.go
 +++ b/schemas/context_fasthttp_test.go
 @@ -35 +35,3 @@
@@ -4700,6 +4848,18 @@
 -}
 \ No newline at end of file
 +}
+--- a/schemas/emptytooloutputmux_test.go
++++ b/schemas/emptytooloutputmux_test.go
+@@ -101 +101 @@
+-}
+\ No newline at end of file
++}
+--- a/schemas/fileurlpreservation_test.go
++++ b/schemas/fileurlpreservation_test.go
+@@ -83 +83 @@
+-}
+\ No newline at end of file
++}
 --- a/schemas/models_test.go
 +++ b/schemas/models_test.go
 @@ -96 +96 @@
@@ -4707,15 +4867,15 @@
 +			Provider:               "openai",
 --- a/schemas/mux.go
 +++ b/schemas/mux.go
-@@ -477 +476,0 @@
+@@ -497 +496,0 @@
 -				reasoningRole := ResponsesInputMessageRoleAssistant
-@@ -481 +480,4 @@
+@@ -501 +500,4 @@
 -					Role: &reasoningRole,
 +					ResponsesReasoning: &ResponsesReasoning{
 +						Summary:          summaries,
 +						EncryptedContent: encryptedContent,
 +					},
-@@ -486,6 +488 @@
+@@ -506,6 +508 @@
 -				if len(summaries) > 0 || encryptedContent != nil {
 -					rm.ResponsesReasoning = &ResponsesReasoning{
 -						Summary:          summaries,
@@ -4723,38 +4883,42 @@
 -					}
 -				}
 +
-@@ -497 +493,0 @@
+@@ -517 +513,0 @@
 -			reasoningRole := ResponsesInputMessageRoleAssistant
-@@ -500,3 +496,3 @@
+@@ -520,3 +516,3 @@
 -				ID:   new("rs_" + GetRandomString(50)),
 -				Type: &reasoningType,
 -				Role: &reasoningRole,
 +				ID:                 new("rs_" + GetRandomString(50)),
 +				Type:               &reasoningType,
 +				ResponsesReasoning: &ResponsesReasoning{Summary: []ResponsesReasoningSummary{}},
-@@ -2037 +2032,0 @@
+@@ -2210 +2205,0 @@
 -		role := ResponsesInputMessageRoleAssistant
-@@ -2039,2 +2034,2 @@
+@@ -2212,2 +2207,2 @@
 -			Type: &reasoningType,
 -			Role: &role,
 +			Type:               &reasoningType,
 +			ResponsesReasoning: &ResponsesReasoning{Summary: []ResponsesReasoningSummary{}},
-@@ -2079 +2073,0 @@
+@@ -2252 +2246,0 @@
 -			role := ResponsesInputMessageRoleAssistant
-@@ -2081,3 +2075,3 @@
+@@ -2254,3 +2248,3 @@
 -				ID:   &itemID,
 -				Type: &reasoningType,
 -				Role: &role,
 +				ID:                 &itemID,
 +				Type:               &reasoningType,
 +				ResponsesReasoning: &ResponsesReasoning{Summary: []ResponsesReasoningSummary{}},
-@@ -2545 +2538,0 @@
+@@ -2718 +2711,0 @@
 -			role := ResponsesInputMessageRoleAssistant
-@@ -2549,2 +2542,2 @@
+@@ -2722,2 +2715,2 @@
 -				Type: &reasoningType,
 -				Role: &role,
 +				Type:               &reasoningType,
 +				ResponsesReasoning: &ResponsesReasoning{Summary: []ResponsesReasoningSummary{}},
+@@ -3246 +3239 @@
+-}
+\ No newline at end of file
++}
 --- a/schemas/ocr.go
 +++ b/schemas/ocr.go
 @@ -22,11 +22,11 @@
@@ -5031,6 +5195,12 @@
 +		})
 +	}
 +	wg.Wait()
++}
+--- a/schemas/toolerrormux_test.go
++++ b/schemas/toolerrormux_test.go
+@@ -152 +152 @@
+-}
+\ No newline at end of file
 +}
 --- a/schemas/websocket.go
 +++ b/schemas/websocket.go

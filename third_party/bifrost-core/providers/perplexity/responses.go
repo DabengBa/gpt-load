@@ -228,7 +228,7 @@ func ToPerplexityResponsesRequest(bifrostReq *schemas.BifrostResponsesRequest) *
 
 	// Process ResponsesInput (which contains the Responses messages)
 	if bifrostReq.Input != nil {
-		perplexityReq.Messages = schemas.ToChatMessages(bifrostReq.Input)
+		perplexityReq.Messages = schemas.ToChatMessages(bifrostReq.Input, nil)
 	}
 
 	return perplexityReq

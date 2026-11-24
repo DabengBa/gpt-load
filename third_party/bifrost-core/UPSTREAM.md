@@ -5,10 +5,10 @@ Pinned local fork of the Bifrost Go SDK used by gpt-load.
 | fact | value |
 |---|---|
 | module path | `github.com/maximhq/bifrost/core` |
-| upstream version | `v1.14.1` (`version` file contains `1.14.1`) |
-| upstream source | `github.com/maximhq/bifrost`, tag `core/v1.14.1`, commit `2975d142abcffc5783a60201394631b5576c748f`, module cache `github.com/maximhq/bifrost/core@v1.14.1` |
-| root wiring | `go.mod`: `require github.com/maximhq/bifrost/core v1.14.1` + `replace github.com/maximhq/bifrost/core => ./third_party/bifrost-core` |
-| nested go.mod / go.sum | byte-identical to upstream v1.14.1; the root module's MVS selection applies, including `github.com/mark3labs/mcp-go v1.3.0` |
+| upstream version | `v1.16.0` (`version` file contains `1.16.0`) |
+| upstream source | `github.com/maximhq/bifrost`, tag `core/v1.16.0`, commit `890fe26c7fd91cccf8e87ea499fa60c6ceeda987`, module cache `github.com/maximhq/bifrost/core@v1.16.0` |
+| root wiring | `go.mod`: `require github.com/maximhq/bifrost/core v1.16.0` + `replace github.com/maximhq/bifrost/core => ./third_party/bifrost-core` |
+| nested go.mod / go.sum | byte-identical to upstream v1.16.0; the root module repeats upstream's `github.com/mark3labs/mcp-go` replacement because dependency module replacements are not inherited |
 
 ## Why the fork exists
 
@@ -22,12 +22,20 @@ way to add a request-scoped observer without a global registry.
 
 ## Fork delta
 
-`gptload-observer.patch` is the complete source diff against pristine v1.14.1,
-excluding this document and the patch itself. Apply it with `patch -p1` in a
+`gptload-observer.patch` is the complete source diff against pristine v1.16.0,
+excluding this document, the patch and `hack/`. Apply it with `patch -p1 -l` in a
 fresh copy of the upstream module. Its historical name also covers the remaining
 cache, tool, stream, and schema changes; Git is the history of those changes.
-Applying the patch to a fresh copy of `core@v1.14.1` reproduces this tree with
+Applying the patch to a fresh copy of `core@v1.16.0` reproduces this tree with
 zero differences, excluding this document, the patch and `hack/`.
+
+### v1.16.0 upgrade
+
+The source was three-way merged from pristine v1.14.1, the actual local fork,
+and pristine v1.16.0. The Soniox stream passes its context to the fork's raw
+body observer, and new Bedrock tests use the fork's exported `InvokeBuildConfig`.
+The merged context keys retain the local reasoning-strip retry opt-out alongside
+the new upstream keys.
 
 ### v1.14.1 upgrade
 

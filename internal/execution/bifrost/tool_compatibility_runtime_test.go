@@ -29,6 +29,7 @@ func TestCompatibleBestEffortToolConversion(t *testing.T) {
 	}{
 		{"Codex mixed tools", protocol.OpenAIResponses, `{"model":"client-model","input":"hello","store":false,"tool_choice":"auto","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}},{"type":"namespace","name":"helpers","tools":[{"type":"function","name":"search","parameters":{"type":"object"}}]},{"type":"web_search"},{"type":"custom","name":"apply_patch","format":{"type":"text"}}]}`, 1},
 		{"Responses selected search", protocol.OpenAIResponses, `{"model":"client-model","input":"hello","store":false,"tools":[{"type":"web_search"}],"tool_choice":{"type":"function","name":"web_search"}}`, 0},
+		{"Responses selected custom", protocol.OpenAIResponses, `{"model":"client-model","input":"hello","store":false,"tools":[{"type":"custom","name":"edit","format":{"type":"text"}}],"tool_choice":{"type":"custom","name":"edit"}}`, 0},
 		{"Claude selected search", protocol.Anthropic, `{"model":"client-model","max_tokens":64,"messages":[{"role":"user","content":"hello"}],"tools":[{"type":"web_search_20250305","name":"web_search"}],"tool_choice":{"type":"tool","name":"web_search"}}`, 0},
 	} {
 		for _, stream := range []bool{false, true} {

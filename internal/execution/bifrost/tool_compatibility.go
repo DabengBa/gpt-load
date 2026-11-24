@@ -1,6 +1,7 @@
 package bifrost
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/maximhq/bifrost/core/schemas"
@@ -277,6 +278,22 @@ func vertexUsesGeminiResponses(model string) bool {
 func targetUsesChatFallback(providerKind channel.ProviderKind, model string) bool {
 	return providerKind == channel.ProviderOpenAICompatible || providerKind == channel.ProviderGroq ||
 		providerKind == channel.ProviderDeepSeek || providerKind == channel.ProviderGoogleVertex && vertexUsesChatFallback(model)
+}
+
+// Bifrost can now rewrite custom tools as functions. These routes still
+// support only ordinary function definitions and do not replay custom calls.
+func preserveChatFallbackToolContract(request *schemas.BifrostResponsesRequest) {
+	if request == nil || request.Params == nil {
+		return
+	}
+	params := request.Params
+	params.Tools = slices.DeleteFunc(params.Tools, func(tool schemas.ResponsesTool) bool {
+		return tool.Type != schemas.ResponsesToolTypeFunction
+	})
+	if choice := params.ToolChoice; choice != nil && choice.ResponsesToolChoiceStruct != nil &&
+		choice.ResponsesToolChoiceStruct.Type == schemas.ResponsesToolChoiceTypeCustom {
+		params.ToolChoice = nil
+	}
 }
 
 func chatFallbackToolCompatibility(request *schemas.BifrostResponsesRequest) (bool, bool) {
