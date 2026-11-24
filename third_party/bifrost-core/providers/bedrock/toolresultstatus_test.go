@@ -218,11 +218,11 @@ func TestToolResultKeepsImagesNamesOtherMedia(t *testing.T) {
 	converted, err := convertToolMessages(context.Background(), "anthropic.claude-sonnet-4-5-20250929-v1:0", []schemas.ChatMessage{{
 		Role:            schemas.ChatMessageRoleTool,
 		ChatToolMessage: &schemas.ChatToolMessage{ToolCallID: schemas.Ptr("toolu_1")},
-		Content:         &schemas.ChatMessageContent{ContentBlocks: []schemas.ChatContentBlock{
-		{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr("chart below")},
-		{Type: schemas.ChatContentBlockTypeImage, ImageURLStruct: &schemas.ChatInputImage{URL: "data:image/png;base64,iVBORw0KGgo="}},
-		{Type: schemas.ChatContentBlockTypeInputAudio, InputAudio: &schemas.ChatInputAudio{Data: "SUQz", Format: schemas.Ptr("mp3")}},
-	}},
+		Content: &schemas.ChatMessageContent{ContentBlocks: []schemas.ChatContentBlock{
+			{Type: schemas.ChatContentBlockTypeText, Text: schemas.Ptr("chart below")},
+			{Type: schemas.ChatContentBlockTypeImage, ImageURLStruct: &schemas.ChatInputImage{URL: "data:image/png;base64,iVBORw0KGgo="}},
+			{Type: schemas.ChatContentBlockTypeInputAudio, InputAudio: &schemas.ChatInputAudio{Data: "SUQz", Format: schemas.Ptr("mp3")}},
+		}},
 	}})
 	if err != nil {
 		t.Fatalf("convert tool messages: %v", err)

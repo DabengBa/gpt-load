@@ -62,6 +62,9 @@ func finishConvertedPreparation(spec execution.AttemptSpec, providerKind channel
 		failure := notSentConversionFailure(execution.ErrorCodeCriticalSemanticLoss, "conversion cannot preserve requested tool history")
 		return preparedAttempt{}, &failure
 	}
+	if chatFallback {
+		preserveChatFallbackToolContract(prepared.responsesRequest)
+	}
 	wantSystems := dialect.CountMidConversationSystemMessages(spec.ClientProtocol, spec.Body)
 	if wantSystems == 0 {
 		return prepared, nil
