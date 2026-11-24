@@ -4088,6 +4088,7 @@ func TestHandlerReturnsModelRequiredByFilterForProtocolOnlyRequest(t *testing.T)
 	handler.dialects = dialect.NewSet(
 		dialect.NewOpenAIResponses(),
 	)
+	seedResponseResourceBinding(t, handler, "resp_123")
 	engine := gin.New()
 	bindGatewayRoutesForTest(t, engine, handler)
 

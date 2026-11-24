@@ -46,10 +46,14 @@ match, and capacity overflow for a bound request is granted only when the
 resolved route equals the binding.
 
 No-model Responses routes use the group-level `resource` entry identity with
-an empty upstream model. They do not borrow an arbitrary configured model's
-entry. A resource or extension request with an extracted affinity signal can
-therefore learn and recover its successful route, including after hot-cache
-eviction; requests without a signal do not learn a binding.
+an empty upstream model rather than borrowing a configured model's entry.
+Requests that address a response ID, including resource extensions, use
+response ownership instead of learning or recovering prompt affinity.
+The gateway looks up the response ID under the authenticated Access Key.
+No binding means a local `404 response_resource_not_found`; a binding limits
+dispatch to its original group, credential ID and identity generation. If
+that identity is no longer eligible, the request does not fall back to another
+credential. Ownership does not replace current route and Access Key filters.
 
 Route identity is what makes a same-credential sibling model reachable: a
 credential may serve several entries and upstream models behind one public

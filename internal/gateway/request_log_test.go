@@ -369,6 +369,7 @@ func TestHandlerRecordsProtocolOnlyResponsesResourceWithoutFabricatingModels(t *
 		t.Fatalf("Publish() error = %v", err)
 	}
 	handler.dialects = dialect.NewSet(dialect.NewOpenAIResponses())
+	seedResponseResourceBinding(t, handler, "resp_123")
 
 	request := httptest.NewRequest(http.MethodGet, "/v1/responses/resp_123", nil)
 	request.Header.Set("Authorization", "Bearer gl-client")
@@ -421,6 +422,7 @@ func TestHandlerRejectsResponsesResourceWhenGroupHasNoModels(t *testing.T) {
 		t.Fatalf("Publish() error = %v", err)
 	}
 	handler.dialects = dialect.NewSet(dialect.NewOpenAIResponses())
+	seedResponseResourceBinding(t, handler, "resp_123")
 
 	request := httptest.NewRequest(http.MethodGet, "/v1/responses/resp_123", nil)
 	request.Header.Set("Authorization", "Bearer gl-client")

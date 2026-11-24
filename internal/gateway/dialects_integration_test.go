@@ -324,6 +324,12 @@ func TestResponsesNamespaceRoutesOrdinaryMethodsAndRejectsDangerousMethodsLocall
 			status: http.StatusOK,
 		},
 		{
+			name:   "empty trailing slash passthrough",
+			method: http.MethodGet,
+			target: "/v1/responses/",
+			status: http.StatusOK,
+		},
+		{
 			name:   "delete",
 			method: http.MethodDelete,
 			target: "/v1/responses/resp_123",
@@ -332,7 +338,7 @@ func TestResponsesNamespaceRoutesOrdinaryMethodsAndRejectsDangerousMethodsLocall
 		{
 			name:   "replace extension",
 			method: http.MethodPut,
-			target: "/v1/responses/vendor-extension",
+			target: "/v1/responses/resp_123",
 			body:   `{"enabled":true}`,
 			status: http.StatusOK,
 		},
@@ -369,15 +375,15 @@ func TestResponsesNamespaceRoutesOrdinaryMethodsAndRejectsDangerousMethodsLocall
 			status: http.StatusOK,
 		},
 		{
-			name:   "unknown resource extension",
+			name:   "bound resource extension",
 			method: http.MethodPatch,
-			target: "/v1/responses/vendor-extension/nested",
+			target: "/v1/responses/resp_123/vendor-extension/nested",
 			status: http.StatusOK,
 		},
 		{
 			name:            "upstream resource error",
 			method:          http.MethodGet,
-			target:          "/v1/responses/resp_missing",
+			target:          "/v1/responses/resp_123",
 			status:          http.StatusNotFound,
 			wantBody:        `{"error":{"message":"resource missing"}}`,
 			wantContentType: "application/json",

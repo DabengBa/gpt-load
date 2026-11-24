@@ -20,10 +20,11 @@ import (
 	"gpt-load/internal/state"
 )
 
-func TestHandlerReusesNoModelAffinityRouteAfterDurableRecovery(t *testing.T) {
+func TestHandlerUsesResponseOwnershipInsteadOfLearningPromptAffinity(t *testing.T) {
 	forwarder := &scriptedForwarder{results: successfulAffinityResults(3)}
 	h, _, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
 	h.dialects = dialect.NewSet(dialect.NewOpenAIResponses())
+	seedResponseResourceBinding(t, h, "vendor-extension")
 	store := &affinityStoreStub{}
 	h.affinityStore = store
 	sink := &recordingRequestLogSink{}
@@ -32,9 +33,6 @@ func TestHandlerReusesNoModelAffinityRouteAfterDurableRecovery(t *testing.T) {
 	useAffinityRandomValues(h, 0, 1, 1)
 	engine := newAffinityTestEngine(t, h)
 	for i := range 3 {
-		if i == 1 {
-			h.affinityCache = affinity.NewCache()
-		}
 		request := httptest.NewRequest(http.MethodPatch, "/v1/responses/vendor-extension/nested", strings.NewReader(`{"input":"hello"}`))
 		request.Header.Set("Authorization", "Bearer gl-client")
 		response := httptest.NewRecorder()
@@ -44,15 +42,10 @@ func TestHandlerReusesNoModelAffinityRouteAfterDurableRecovery(t *testing.T) {
 		}
 	}
 	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-one", "sk-one"})
-	assertAffinityHits(t, sink.snapshot(), []bool{false, true, true})
+	assertAffinityHits(t, sink.snapshot(), []bool{false, false, false})
 	targets := store.targets()
-	if len(targets) != 1 {
-		t.Fatalf("bindings = %#v, want one recovered resource binding", targets)
-	}
-	for _, target := range targets {
-		if !target.Valid() || target.UpstreamModelID != "" {
-			t.Fatalf("resource binding = %#v, want valid target without a model", target)
-		}
+	if len(targets) != 0 {
+		t.Fatalf("bindings = %#v, want no prompt affinity for owned resources", targets)
 	}
 }
 

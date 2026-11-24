@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
+	"gpt-load/internal/execution"
 	"gpt-load/internal/protocol"
 )
 
@@ -69,6 +71,20 @@ func (d *OpenAIResponses) InspectRequest(req *ParsedRequest) (RequestMetadata, e
 	}
 	metadata.Operation, metadata.RouteRequirement, metadata.ResponsesStorePreference =
 		responsesExecutionMetadata(req)
+	switch metadata.Operation {
+	case execution.OperationResponsesCreate, execution.OperationResponsesCompact, execution.OperationResponsesInputTokens:
+	default:
+		if resourcePath, found := strings.CutPrefix(req.Path, openAIResponsesPath+"/"); found {
+			// The legacy empty trailing-slash namespace remains an ordinary
+			// passthrough path; resource subpaths need a non-empty first segment.
+			if resourcePath != "" {
+				metadata.ResponseResourceID, _, _ = strings.Cut(resourcePath, "/")
+			}
+			if resourcePath != "" && metadata.ResponseResourceID == "" {
+				return RequestMetadata{}, fmt.Errorf("response resource ID is required")
+			}
+		}
+	}
 	return metadata, nil
 }
 
