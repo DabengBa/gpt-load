@@ -359,6 +359,41 @@ func TestExecutionForwarderCapturesCompressedImagesUsageAfterDecoding(t *testing
 	}
 }
 
+func TestExecutionForwarderObservesNativeChatAfterDecoding(t *testing.T) {
+	const plain = `{"id":"chat-1","choices":[{"message":{"role":"assistant","content":null},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":1,"total_tokens":8}}`
+	for _, encoding := range []string{"", "identity", "gzip"} {
+		t.Run("encoding="+encoding, func(t *testing.T) {
+			body := []byte(plain)
+			headers := http.Header{"Content-Type": {"application/json"}}
+			if encoding != "" {
+				headers.Set("Content-Encoding", encoding)
+				body = encodeContentCodingForGatewayTest(t, contentcoding.Encoding(encoding), body)
+			}
+			executor := fakeExecutionExecutor{unary: func(context.Context, execution.AttemptSpec) execution.AttemptResult {
+				return execution.AttemptResult{
+					DispatchState: execution.DispatchMaybeSent, ResponseStarted: true, StatusCode: http.StatusOK,
+					Header: headers, Body: body,
+				}
+			}}
+			input := executionForwardInput()
+			input.ObserveUsage = true
+			input.Dialect = dialect.NewOpenAI()
+			result := NewExecutionForwarder(executor).Forward(context.Background(), input)
+			if result.Err != nil {
+				t.Fatal(result.Err)
+			}
+			if encoding == "gzip" {
+				if !result.EmptyCompletion || result.Usage.State != usage.StateComplete || result.Usage.Tokens.Output != 1 ||
+					result.ExecutionError == nil || result.ExecutionError.Code != upstreamEmptyCompletionCode {
+					t.Fatalf("decoded native Chat result: usage=%+v, evidence=%+v", result.Usage, result.ExecutionError)
+				}
+			} else if result.EmptyCompletion || result.Usage.State != usage.StateMissing || result.ExecutionError != nil {
+				t.Fatalf("identity native Chat result: usage=%+v, evidence=%+v", result.Usage, result.ExecutionError)
+			}
+		})
+	}
+}
+
 func TestUsageCaptureNonStreamingPlainDoesNotCloneBody(t *testing.T) {
 	t.Parallel()
 

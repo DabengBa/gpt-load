@@ -122,22 +122,68 @@ func TestResponsesCreateMislabeledJSONContentType(t *testing.T) {
 
 func TestResponsesCreateMislabeledGzipJSON(t *testing.T) {
 	const body = `{"object":"response","status":"completed","output":[],"usage":{"input_tokens":20,"output_tokens":1,"total_tokens":21}}`
+	for _, encoding := range []string{"gzip", ""} {
+		t.Run("encoding="+encoding, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				if encoding != "" {
+					w.Header().Set("Content-Encoding", encoding)
+				}
+				writer := gzip.NewWriter(w)
+				_, _ = io.WriteString(writer, body)
+				_ = writer.Close()
+			}))
+			defer server.Close()
+			runtime := newOfficialOpenAITestRuntime(t, server.URL)
+			spec := openAIResponsesSpec(execution.OperationResponsesCreate, http.MethodPost, "/v1/responses")
+			spec.ClientModel = spec.UpstreamModel
+			result := runtime.Execute(context.Background(), spec)
+			if result.Error != nil || string(result.Body) != body || result.Header.Get("Content-Type") != "application/json" || result.Header.Get("Content-Encoding") != "" {
+				t.Fatalf("result = %+v body=%q", result, result.Body)
+			}
+			assertUsage(t, result.Usage, usage.Tokens{UncachedInput: 20, Output: 1})
+		})
+	}
+}
+
+func TestResponsesInferredCompressionKeepsProtocolLimit(t *testing.T) {
+	const completed = `{"object":"response","status":"completed","output":[]}`
+	limit := execution.UnaryResponseBodyLimit(protocol.OpenAIResponses)
+	var wire bytes.Buffer
+	writer := gzip.NewWriter(&wire)
+	_, _ = io.WriteString(writer, completed)
+	padding := bytes.Repeat([]byte{' '}, 1<<20)
+	for remaining := limit; remaining > 0; remaining -= int64(len(padding)) {
+		if _, err := writer.Write(padding[:min(remaining, int64(len(padding)))]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Content-Encoding", "gzip")
-		writer := gzip.NewWriter(w)
-		_, _ = io.WriteString(writer, body)
-		_ = writer.Close()
+		_, _ = w.Write(wire.Bytes())
 	}))
 	defer server.Close()
-	runtime := newOfficialOpenAITestRuntime(t, server.URL)
-	spec := openAIResponsesSpec(execution.OperationResponsesCreate, http.MethodPost, "/v1/responses")
-	spec.ClientModel = spec.UpstreamModel
-	result := runtime.Execute(context.Background(), spec)
-	if result.Error != nil || string(result.Body) != body || result.Header.Get("Content-Type") != "application/json" || result.Header.Get("Content-Encoding") != "" {
-		t.Fatalf("result = %+v body=%q", result, result.Body)
+	runtime := newRuntimeForTest(t, testRuntimeOptions{
+		allowPrivateNetwork: true, openAIBaseURL: server.URL, maxUnaryResponseBodyBytes: limit + int64(len(completed)),
+	})
+	for _, operation := range []execution.Operation{execution.OperationResponsesCreate, execution.OperationProbe, execution.OperationModelTrace} {
+		t.Run(string(operation), func(t *testing.T) {
+			spec := openAIResponsesSpec(operation, http.MethodPost, "/v1/responses")
+			if operation != execution.OperationResponsesCreate {
+				spec = utilitySpec(channel.OpenAI, protocol.OpenAIResponses, operation, "", "", nil)
+				spec.UpstreamModel = "upstream-model"
+				spec.PromptText, spec.ProbeMaxOutputTokens = "test", testProbeOutputTokens
+			}
+			spec.ClientModel = spec.UpstreamModel
+			result := runtime.Execute(context.Background(), spec)
+			if !result.ResponseStarted || result.Error == nil || len(result.Body) != 0 {
+				t.Fatalf("oversized compressed Responses: status=%d, error=%v, body length=%d", result.StatusCode, result.Error, len(result.Body))
+			}
+		})
 	}
-	assertUsage(t, result.Usage, usage.Tokens{UncachedInput: 20, Output: 1})
 }
 
 func TestOfficialOpenAIResponsesCreateNativeStream(t *testing.T) {

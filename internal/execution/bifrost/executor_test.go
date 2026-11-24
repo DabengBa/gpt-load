@@ -225,36 +225,40 @@ func TestRuntimeBoundsUnaryResponsesBeforeMaterialization(t *testing.T) {
 		}
 	})
 
-	t.Run("native compressed response fails closed without materialization", func(t *testing.T) {
-		var compressed bytes.Buffer
-		writer := gzip.NewWriter(&compressed)
-		_, _ = writer.Write([]byte(`{"model":"upstream-model","padding":"` + strings.Repeat("x", 4096) + `"}`))
-		if err := writer.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if int64(compressed.Len()) >= limit {
-			t.Fatalf("compressed fixture = %d bytes, want below %d", compressed.Len(), limit)
-		}
-		server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
-			response.Header().Set("Content-Type", "application/json")
-			response.Header().Set("Content-Encoding", "gzip")
-			_, _ = response.Write(compressed.Bytes())
-		}))
-		defer server.Close()
+	for _, encoding := range []string{"gzip", ""} {
+		t.Run("oversized native compressed response/encoding="+encoding, func(t *testing.T) {
+			var compressed bytes.Buffer
+			writer := gzip.NewWriter(&compressed)
+			_, _ = writer.Write([]byte(`{"model":"upstream-model","padding":"` + strings.Repeat("x", 4096) + `"}`))
+			if err := writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if int64(compressed.Len()) >= limit {
+				t.Fatalf("compressed fixture = %d bytes, want below %d", compressed.Len(), limit)
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+				response.Header().Set("Content-Type", "application/json")
+				if encoding != "" {
+					response.Header().Set("Content-Encoding", encoding)
+				}
+				_, _ = response.Write(compressed.Bytes())
+			}))
+			defer server.Close()
 
-		runtime := newProtocolTestRuntime(t, testRuntimeOptions{
-			allowPrivateNetwork:       true,
-			maxUnaryResponseBodyBytes: limit,
+			runtime := newProtocolTestRuntime(t, testRuntimeOptions{
+				allowPrivateNetwork:       true,
+				maxUnaryResponseBodyBytes: limit,
+			})
+			spec := compatibleSpec(server.URL)
+			spec.ClientModel = spec.UpstreamModel
+			result := runtime.Execute(context.Background(), spec)
+			if result.Error == nil || result.Error.Kind != execution.ErrorKindInternal ||
+				result.Error.Summary != "encoded upstream response cannot be safely forwarded" ||
+				len(result.Body) != 0 {
+				t.Fatalf("compressed native result = %+v body=%d", result, len(result.Body))
+			}
 		})
-		spec := compatibleSpec(server.URL)
-		spec.ClientModel = spec.UpstreamModel
-		result := runtime.Execute(context.Background(), spec)
-		if result.Error == nil || result.Error.Kind != execution.ErrorKindInternal ||
-			result.Error.Summary != "encoded upstream response cannot be safely forwarded" ||
-			len(result.Body) != 0 {
-			t.Fatalf("compressed native result = %+v body=%d", result, len(result.Body))
-		}
-	})
+	}
 
 	t.Run("converted response", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
@@ -276,6 +280,24 @@ func TestRuntimeBoundsUnaryResponsesBeforeMaterialization(t *testing.T) {
 			t.Fatalf("oversized converted result = %+v", result)
 		}
 	})
+}
+
+func TestNativeUnaryCompressedErrorClassification(t *testing.T) {
+	const body = `{"error":{"type":"invalid_request_error","code":"model_not_found","message":"model missing: ` + testAPIKey + `"}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		writer := gzip.NewWriter(w)
+		_, _ = io.WriteString(writer, body)
+		_ = writer.Close()
+	}))
+	defer server.Close()
+	runtime := newProtocolTestRuntime(t, testRuntimeOptions{allowPrivateNetwork: true})
+	result := runtime.Execute(context.Background(), compatibleSpec(server.URL))
+	if result.StatusCode != http.StatusBadRequest || result.Error == nil || result.Error.Code != "model_not_found" ||
+		result.Error.Hint != execution.FailureHintModelUnavailable || strings.Contains(result.Error.Summary, testAPIKey) {
+		t.Fatalf("compressed error classification = %+v, evidence=%+v", result, result.Error)
+	}
 }
 
 func TestNativePassthroughRewritesModelAliasInUnaryAndStreamResponses(t *testing.T) {

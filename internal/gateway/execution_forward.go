@@ -15,6 +15,7 @@ import (
 	"gpt-load/internal/channel"
 	"gpt-load/internal/dialect"
 	"gpt-load/internal/execution"
+	"gpt-load/internal/platform/contentcoding"
 	platformheader "gpt-load/internal/platform/httpheader"
 	"gpt-load/internal/platform/redact"
 	"gpt-load/internal/protocol"
@@ -69,7 +70,8 @@ func (forwarder *ExecutionForwarder) Forward(
 	result = classifyGatewayFailureEvidence(result)
 
 	result = forwarder.prepareBufferedResult(input, result)
-	if (input.ClientProtocol == protocol.OpenAIImages ||
+	nativeEncoded := isCompressedNativeUnary(input, executionResult.Header)
+	if (nativeEncoded || input.ClientProtocol == protocol.OpenAIImages ||
 		embeddingsProtocol(input.ClientProtocol) || input.ClientProtocol == protocol.Rerank) && input.ObserveUsage &&
 		result.HasResponse() && result.StatusCode >= http.StatusOK &&
 		result.StatusCode < http.StatusMultipleChoices &&
@@ -78,6 +80,9 @@ func (forwarder *ExecutionForwarder) Forward(
 			input.Dialect,
 			result.ClassificationBody,
 		)
+	}
+	if nativeEncoded && result.Err == nil {
+		observeUnaryChatFailure(input.ClientProtocol, &result)
 	}
 	if embeddingsProtocol(input.ClientProtocol) && result.Err == nil &&
 		result.StatusCode >= http.StatusOK && result.StatusCode < http.StatusMultipleChoices {
@@ -1101,8 +1106,23 @@ func upstreamFromExecutionResult(
 	if !result.ResponseStarted && result.Error != nil {
 		upstream.Err = executionFailureError(ctx, result.Error)
 	}
+	if !isCompressedNativeUnary(input, result.Header) {
+		observeUnaryChatFailure(input.ClientProtocol, &upstream)
+	}
+	return upstream
+}
+
+func isCompressedNativeUnary(input ForwardInput, headers http.Header) bool {
+	if input.RouteMode != execution.RouteNative {
+		return false
+	}
+	encoding, err := contentcoding.ParseContentEncoding(headerFieldValues(headers, "Content-Encoding"))
+	return err == nil && encoding != contentcoding.Identity
+}
+
+func observeUnaryChatFailure(clientProtocol protocol.Protocol, upstream *UpstreamResult) {
 	if upstream.ExecutionError == nil && blockedChatCompletion(
-		input.ClientProtocol, upstream.StatusCode, upstream.ClassificationBody) {
+		clientProtocol, upstream.StatusCode, upstream.ClassificationBody) {
 		upstream.ExecutionError = &execution.ErrorEvidence{
 			Kind:       execution.ErrorKindProvider,
 			OriginHint: execution.ErrorOriginUpstream,
@@ -1114,7 +1134,7 @@ func upstreamFromExecutionResult(
 		upstream.ErrorSummary = upstreamContentFilterSummary
 	}
 	if upstream.ExecutionError == nil && emptyChatCompletion(
-		input.ClientProtocol, upstream.StatusCode, upstream.ClassificationBody, upstream.Usage) {
+		clientProtocol, upstream.StatusCode, upstream.ClassificationBody, upstream.Usage) {
 		upstream.EmptyCompletion = true
 		upstream.ExecutionError = &execution.ErrorEvidence{
 			Kind:       execution.ErrorKindProvider,
@@ -1126,7 +1146,6 @@ func upstreamFromExecutionResult(
 		}
 		upstream.ErrorSummary = upstreamEmptyCompletionSummary
 	}
-	return upstream
 }
 
 func upstreamFromExecutionStreamResult(
