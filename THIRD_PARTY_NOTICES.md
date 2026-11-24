@@ -37,8 +37,8 @@ The complete MIT License text is distributed in `LICENSES/MIT.txt`.
 
 - Source: https://github.com/Ikaleio/lm-detector
 - Go SDK: `github.com/Ikaleio/lm-detector/sdk/go` version
-  `v0.2.1-0.20261119053927-70159b7536a2`
-- Embedded data snapshot: `70159b7536a2ceb55c478c8c9472da81d3627e59`,
+  `v0.2.1-0.20261123065740-e0472890bea8`
+- Embedded data snapshot: `e0472890bea827d15ca883636a77d4c10bbe843b`,
   `data/unified_bank.json` and `data/shared_detector.bin`
 - Copyright: 2026 xqy2006
 - License: MIT License
