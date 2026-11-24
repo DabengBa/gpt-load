@@ -403,13 +403,25 @@ complete:
 	if spec.ClientProtocol != protocol.OpenAIImages {
 		bodyBytes = bytes.Clone(bodyBytes)
 	}
+	inferredEncoding := contentcoding.Identity
+	_, hasEncoding := headers["Content-Encoding"]
+	if prepared.mode == channel.RouteNative && !hasEncoding {
+		inferredEncoding = sniffUnaryResponseEncoding(bodyBytes)
+		if inferredEncoding != contentcoding.Identity {
+			headers.Set("Content-Encoding", string(inferredEncoding))
+		}
+	}
+	decodedLimit := r.unaryResponseBodyLimit(spec)
+	if inferredEncoding != contentcoding.Identity {
+		decodedLimit = min(decodedLimit, execution.UnaryResponseBodyLimit(spec.ClientProtocol))
+	}
 	if (spec.Operation == execution.OperationProbe || spec.Operation == execution.OperationModelTrace) && spec.ClientProtocol == protocol.OpenAIResponses &&
 		prepared.upstreamProtocol == protocol.OpenAIResponses && status >= http.StatusOK &&
 		status < http.StatusMultipleChoices {
 		encoding, err := contentcoding.ParseContentEncoding(headers.Values("Content-Encoding"))
 		var decoded []byte
 		if err == nil {
-			decoded, err = contentcoding.DecodeLimited(encoding, bodyBytes, r.unaryResponseBodyLimit(spec))
+			decoded, err = contentcoding.DecodeLimited(encoding, bodyBytes, decodedLimit)
 		}
 		if err == nil && isEventStreamContentType(headers.Get("Content-Type")) {
 			if !validCompletedResponsesJSON(decoded) {
@@ -434,7 +446,7 @@ complete:
 		isEventStreamContentType(headers.Get("Content-Type")) {
 		encoding, err := contentcoding.ParseContentEncoding(headers.Values("Content-Encoding"))
 		if err == nil {
-			decoded, decodeErr := contentcoding.DecodeLimited(encoding, bodyBytes, r.unaryResponseBodyLimit(spec))
+			decoded, decodeErr := contentcoding.DecodeLimited(encoding, bodyBytes, decodedLimit)
 			if decodeErr == nil && validCompletedResponsesJSON(decoded) {
 				bodyBytes = decoded
 				if usageEvidence == nil {
@@ -445,8 +457,24 @@ complete:
 			}
 		}
 	}
-	if looksLikeEncodedResponse(bodyBytes) {
-		return startedUnaryFailure(status, headers, execution.ErrorKindInternal, "encoded upstream response cannot be safely forwarded")
+	var decodedErrorBody []byte
+	if encoding := sniffUnaryResponseEncoding(bodyBytes); encoding != contentcoding.Identity {
+		if inferredEncoding == contentcoding.Identity || isEventStreamContentType(headers.Get("Content-Type")) {
+			return startedUnaryFailure(status, headers, execution.ErrorKindInternal, "encoded upstream response cannot be safely forwarded")
+		}
+		if status < http.StatusOK || status >= http.StatusMultipleChoices {
+			// Classify from plaintext, but keep the wire body for gateway redaction and its wire limit.
+			var err error
+			decodedErrorBody, err = contentcoding.DecodeLimited(encoding, bodyBytes, min(decodedLimit, execution.DecompressedErrorBodyLimitBytes))
+			if err != nil {
+				return startedUnaryFailure(status, headers, execution.ErrorKindInternal, "encoded upstream response cannot be safely forwarded")
+			}
+		} else if decodedLimit < execution.UnaryResponseBodyLimit(spec.ClientProtocol) {
+			// The gateway enforces its default decoded limit, not a stricter runtime override.
+			if _, err := contentcoding.DecodeLimited(encoding, bodyBytes, decodedLimit); err != nil {
+				return startedUnaryFailure(status, headers, execution.ErrorKindInternal, "encoded upstream response cannot be safely forwarded")
+			}
+		}
 	}
 	model := openAIResponseModel(bodyBytes, spec.UpstreamModel)
 	if status >= http.StatusOK && status < http.StatusMultipleChoices {
@@ -498,13 +526,18 @@ complete:
 			Usage:             usageEvidence,
 		}
 	}
-	evidence := passthroughHTTPError(status, headers, bodyBytes, prepared.secrets)
+	evidenceBody := decodedErrorBody
+	if inferredEncoding == contentcoding.Identity {
+		evidenceBody = bodyBytes
+		bodyBytes = redactSecrets(bodyBytes, prepared.secrets)
+	}
+	evidence := passthroughHTTPError(status, headers, evidenceBody, prepared.secrets)
 	return execution.AttemptResult{
 		DispatchState:     execution.DispatchMaybeSent,
 		ResponseStarted:   true,
 		StatusCode:        status,
 		Header:            headers,
-		Body:              redactSecrets(bodyBytes, prepared.secrets),
+		Body:              bodyBytes,
 		Model:             model,
 		UpstreamRequestID: requestID,
 		Error:             evidence,
@@ -1002,9 +1035,15 @@ func (r *Runtime) executeNativeHead(
 	}
 }
 
-func looksLikeEncodedResponse(body []byte) bool {
-	return len(body) >= 2 && body[0] == 0x1f && body[1] == 0x8b ||
-		len(body) >= 4 && body[0] == 0x28 && body[1] == 0xb5 && body[2] == 0x2f && body[3] == 0xfd
+func sniffUnaryResponseEncoding(body []byte) contentcoding.Encoding {
+	switch {
+	case bytes.HasPrefix(body, []byte{0x1f, 0x8b}):
+		return contentcoding.Gzip
+	case bytes.HasPrefix(body, []byte{0x28, 0xb5, 0x2f, 0xfd}):
+		return contentcoding.Zstd
+	default:
+		return contentcoding.Identity
+	}
 }
 
 func (r *Runtime) executeNativeStream(

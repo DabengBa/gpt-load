@@ -139,7 +139,7 @@ func (result UpstreamResult) HasResponse() bool {
 const (
 	maxNonStreamingResponseBodyBytes = execution.DefaultUnaryResponseBodyLimitBytes
 	maxErrorResponseBodyBytes        = int64(64 << 10)
-	maxDecompressedErrorBodyBytes    = int64(1 << 20)
+	maxDecompressedErrorBodyBytes    = execution.DecompressedErrorBodyLimitBytes
 	maxStreamingErrorBodyBytes       = int(maxErrorResponseBodyBytes)
 )
 

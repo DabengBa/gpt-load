@@ -789,6 +789,96 @@ func TestHandlerHostErrorRotatesAcrossExpandedTestGroups(t *testing.T) {
 	}
 }
 
+func TestHandlerDecodesNativeResponseMissingContentEncoding(t *testing.T) {
+	const plain = `{"id":"chatcmpl-1","model":"provider-model","choices":[{"message":{"content":"ok"}}]}`
+	for _, tc := range []struct {
+		name     string
+		encoding contentcoding.Encoding
+		header   string
+		corrupt  bool
+		want     int
+	}{
+		{name: "gzip", encoding: contentcoding.Gzip, want: http.StatusOK},
+		{name: "zstd", encoding: contentcoding.Zstd, want: http.StatusOK},
+		{name: "corrupt gzip", encoding: contentcoding.Gzip, corrupt: true, want: http.StatusBadGateway},
+		{name: "explicit identity", encoding: contentcoding.Gzip, header: "identity", want: http.StatusBadGateway},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			wire := encodeContentCodingForGatewayTest(t, tc.encoding, []byte(plain))
+			if tc.corrupt {
+				wire = wire[:len(wire)-1]
+			}
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if tc.header != "" {
+					w.Header().Set("Content-Encoding", tc.header)
+				}
+				setRepresentationMetadata(w.Header())
+				_, _ = w.Write(wire)
+			}))
+			defer upstream.Close()
+			engine, _ := newDialectGatewayEngine(t, protocol.OpenAICompletions, "public-model", dialect.NewSet(dialect.NewOpenAI()),
+				dialectGatewayGroup{id: 1, name: "compressed", upstreamURL: upstream.URL, apiKeys: []string{"provider-key"},
+					models: []state.ModelConfig{{ID: "provider-model", Alias: "public-model"}}},
+			)
+			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"public-model"}`))
+			request.Header.Set("Authorization", "Bearer gl-client")
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, request)
+			if recorder.Code != tc.want {
+				t.Fatalf("status = %d, want %d; body=%q", recorder.Code, tc.want, recorder.Body)
+			}
+			if got := recorder.Header().Get("Content-Encoding"); got != "" {
+				t.Fatalf("Content-Encoding = %q, want absent", got)
+			}
+			assertRepresentationMetadata(t, recorder.Header(), false)
+			if tc.want != http.StatusOK {
+				if bytes.Contains(recorder.Body.Bytes(), wire) || strings.Contains(recorder.Body.String(), "chatcmpl-1") {
+					t.Fatal("failed response released upstream body")
+				}
+				return
+			}
+			var body struct {
+				ID      string `json:"id"`
+				Model   string `json:"model"`
+				Choices []struct {
+					Message struct{ Content string } `json:"message"`
+				} `json:"choices"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil || body.ID != "chatcmpl-1" || body.Model != "public-model" || len(body.Choices) != 1 || body.Choices[0].Message.Content != "ok" {
+				t.Fatalf("decoded body = %q (error %v)", recorder.Body, err)
+			}
+			if got := recorder.Header().Get("Content-Length"); got != strconv.Itoa(recorder.Body.Len()) {
+				t.Fatalf("Content-Length = %q; body length = %d", got, recorder.Body.Len())
+			}
+		})
+	}
+}
+
+func TestHandlerRedactsNativeCompressedErrorMissingContentEncoding(t *testing.T) {
+	const secret = "provider-key"
+	plain := []byte(`{"error":{"message":"provider rejected ` + secret + `","type":"invalid_request_error","code":"context_length_exceeded"}}`)
+	wire := encodeContentCodingForGatewayTest(t, contentcoding.Gzip, plain)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write(wire)
+	}))
+	defer upstream.Close()
+	engine, _ := newDialectGatewayEngine(t, protocol.OpenAICompletions, "public-model", dialect.NewSet(dialect.NewOpenAI()),
+		dialectGatewayGroup{id: 1, name: "compressed", upstreamURL: upstream.URL, apiKeys: []string{secret},
+			models: []state.ModelConfig{{ID: "provider-model", Alias: "public-model"}}},
+	)
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"public-model"}`))
+	request.Header.Set("Authorization", "Bearer gl-client")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusBadRequest || recorder.Header().Get("Content-Encoding") != "" ||
+		!strings.Contains(recorder.Body.String(), "context_length_exceeded") || strings.Contains(recorder.Body.String(), secret) {
+		t.Fatalf("compressed error: status=%d headers=%v body=%q", recorder.Code, recorder.Header(), recorder.Body)
+	}
+}
+
 func TestForwarderRewritesAliasedNonStreamingResponses(t *testing.T) {
 	tests := []struct {
 		name             string

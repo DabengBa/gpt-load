@@ -4,6 +4,7 @@ import "gpt-load/internal/protocol"
 
 const (
 	DefaultUnaryResponseBodyLimitBytes          = int64(32 << 20)
+	DecompressedErrorBodyLimitBytes             = int64(1 << 20)
 	OpenAIImagesUnaryResponseBodyLimitBytes     = int64(64 << 20)
 	OpenAIEmbeddingsUnaryResponseBodyLimitBytes = int64(64 << 20)
 	DefaultSSEEventLimitBytes                   = 10 << 20
