@@ -82,7 +82,7 @@ excluded the otherwise eligible, positively weighted bound route.
 The observation is route-scoped: it reports exclusion of the exact bound route,
 so an unavailable bound entry is
 recognized as a bypass even when the same credential still has a healthy
-sibling model. Removing an entry or changing its model is a configuration
+sibling model. Disabling or removing an entry, or changing its model, is a configuration
 invalidation, not a health bypass: the gateway clears the resolved target while
 retaining the original cache observation, allowing the next healthy success to
 replace the stale binding through the same CAS.
@@ -208,13 +208,13 @@ path does not hide the root.
 
 Route changes are reconciled against the published execution route catalog,
 scoped to the key's client protocol, operation and client model, rather than a
-stored deletion list. When the bound entry is removed or its upstream model
-changes, or the entry no longer serves the key's client model or test alias,
+stored deletion list. When the bound entry is disabled or removed, its
+upstream model changes, or it no longer serves the key's client model or test alias,
 affinity reports `target_unavailable`, schedules normally, and lets
-the next healthy success rewrite the row. The entry ID alone cannot preserve a
-binding across a model change. Disabled or zero-weight entries still exist;
-these exclusions do not authorize a takeover. Request-specific restrictions
-also preserve the original binding.
+the next eligible, healthy success rewrite the row. Without such a success,
+the stored binding is left untouched. The entry ID alone cannot preserve a
+binding across a model change. Zero weight and request-specific restrictions
+preserve the original binding and do not authorize a takeover.
 
 `target_unavailable` is also the state reported when the bound group is no
 longer present in the snapshot, or when the stored credential identity is no

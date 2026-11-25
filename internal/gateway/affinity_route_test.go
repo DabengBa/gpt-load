@@ -161,6 +161,64 @@ func TestHandlerRelearnsAfterBoundRouteRemoved(t *testing.T) {
 	}
 }
 
+func TestHandlerRelearnsAfterBoundRouteDisabled(t *testing.T) {
+	forwarder := &scriptedForwarder{results: []UpstreamResult{
+		successfulAffinityResult(),
+		{
+			StatusCode:     http.StatusBadRequest,
+			Header:         http.Header{"Content-Type": {"application/json"}},
+			Body:           []byte(`{"error":"invalid input"}`),
+			RequestWritten: true,
+		},
+		successfulAffinityResult(),
+		successfulAffinityResult(),
+	}}
+	h, _, _ := newHandlerForTest(t, forwarder, "sk-one", "sk-two")
+	store := &affinityStoreStub{}
+	h.affinityStore = store
+	sink := &recordingRequestLogSink{}
+	h.requestLogSink = sink
+	bound := affinityBucketGroup(1, channel.OpenAI, "old-model", 1, 1)
+	bound.Models[0].Alias = "public"
+	replacement := affinityBucketGroup(2, channel.OpenAI, "new-model", 1, 1)
+	replacement.Models[0].Alias = "public"
+	replacement.Models[0].Enabled = new(false)
+	publishAffinityBucketConfig(t, h, config.Settings{}, bound, replacement)
+	engine := newAffinityTestEngine(t, h)
+	body := `{"model":"public","prompt_cache_key":"disabled-route","messages":[{"role":"user","content":"hello"}]}`
+	serveRejected := func(wantStatus, wantAttempts int) {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+		request.Header.Set("Authorization", "Bearer gl-client")
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, request)
+		if response.Code != wantStatus || len(forwarder.inputs) != wantAttempts {
+			t.Fatalf("status = %d, total attempts = %d, want %d/%d; body = %s", response.Code, len(forwarder.inputs), wantStatus, wantAttempts, response.Body.String())
+		}
+		assertLearnedAffinityRoute(t, store, 1, bound.Models[0].EntryID, "old-model")
+		if _, writes := store.counters(); writes != 1 {
+			t.Fatalf("writes = %d, want only the original binding write", writes)
+		}
+	}
+	serveAffinityRequest(t, engine, body)
+	assertLearnedAffinityRoute(t, store, 1, bound.Models[0].EntryID, "old-model")
+
+	bound.Models[0].Enabled = new(false)
+	publishAffinityBucketConfig(t, h, config.Settings{}, bound, replacement)
+	serveRejected(http.StatusServiceUnavailable, 1)
+
+	replacement.Models[0].Enabled = new(true)
+	publishAffinityBucketConfig(t, h, config.Settings{}, bound, replacement)
+	h.affinityCache = affinity.NewCache() // recover the old binding from the durable store
+	serveRejected(http.StatusBadRequest, 2)
+	serveAffinityRequest(t, engine, body)
+	assertLearnedAffinityRoute(t, store, 2, replacement.Models[0].EntryID, "new-model")
+	serveAffinityRequest(t, engine, body)
+	assertAffinityAttemptKeys(t, forwarder.inputs, []string{"sk-one", "sk-two", "sk-two", "sk-two"})
+	assertAffinityUpstreamModels(t, forwarder.inputs, []string{"old-model", "new-model", "new-model", "new-model"})
+	assertAffinityHits(t, sink.snapshot(), []bool{false, false, false, false, true})
+}
+
 func TestRequestRecorderAffinityHitRequiresRouteMatch(t *testing.T) {
 	bound := affinity.Target{GroupID: 1, CredentialID: 1, IdentityGeneration: 1, EntryID: "bound", UpstreamModelID: "model"}
 	for _, test := range []struct {
