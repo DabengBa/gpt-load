@@ -34,25 +34,36 @@ type modelTraceCaptureCall struct {
 	observerID string
 }
 
+const modelTraceCaptureContextIndex = 3
+
 // The source below observes an actual local HTTP round trip, not the result
 // object's reconstructed body. The barrier guarantees concurrent challenges.
 type modelTraceCaptureExecutor struct {
-	url   string
-	mode  string
-	mu    sync.Mutex
-	calls []modelTraceCaptureCall
-	ready chan struct{}
+	url        string
+	mode       string
+	mu         sync.Mutex
+	calls      []modelTraceCaptureCall
+	challenges int
+	ready      chan struct{}
 }
 
 func (e *modelTraceCaptureExecutor) Execute(ctx context.Context, spec execution.AttemptSpec) execution.AttemptResult {
 	e.mu.Lock()
-	index := len(e.calls)
-	e.calls = append(e.calls, modelTraceCaptureCall{spec: spec, index: index, observerID: execution.HTTPAttemptIDFromContext(ctx)})
-	if len(e.calls) == 3 {
-		close(e.ready)
+	index := modelTraceCaptureContextIndex
+	if spec.PromptText != "Reply with the word hello." {
+		index = e.challenges
+		e.challenges++
+		if e.challenges == 3 {
+			close(e.ready)
+		}
 	}
+	e.calls = append(e.calls, modelTraceCaptureCall{spec: spec, index: index, observerID: execution.HTTPAttemptIDFromContext(ctx)})
 	e.mu.Unlock()
-	<-e.ready
+	select {
+	case <-e.ready:
+	case <-ctx.Done():
+		return execution.AttemptResult{Error: &execution.ErrorEvidence{Kind: execution.ErrorKindCanceled}}
+	}
 	if e.mode == "missing" && index == 2 {
 		return execution.AttemptResult{DispatchState: execution.DispatchMaybeSent, Error: &execution.ErrorEvidence{Kind: execution.ErrorKindTransport}}
 	}
@@ -184,8 +195,8 @@ func TestModelTraceRealCaptureStore(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(response.Challenges) != 3 || len(executor.calls) != 3 || len(sink.events) != 3 {
-				t.Fatalf("challenge/call/event counts = %d/%d/%d", len(response.Challenges), len(executor.calls), len(sink.events))
+			if len(response.Challenges) != 3 || executor.challenges != 3 || len(executor.calls) != 4 || len(sink.events) != 4 {
+				t.Fatalf("challenge result/call counts = %d/%d, total call/event counts = %d/%d", len(response.Challenges), executor.challenges, len(executor.calls), len(sink.events))
 			}
 			seen := map[string]bool{}
 			for _, call := range executor.calls {
@@ -217,11 +228,18 @@ func TestModelTraceRealCaptureStore(t *testing.T) {
 				} else if call.index == 1 {
 					wantStatus = http.StatusBadGateway
 				}
-				if challenge == nil || challenge.StatusCode == nil || *challenge.StatusCode != wantStatus {
-					t.Errorf("index %d: capture changed or lost provider status", call.index)
-				}
-				if challenge != nil && wantStatus == http.StatusOK && string(challenge.Outcome) != "succeeded" {
-					t.Errorf("index %d: capture changed successful provider outcome", call.index)
+				if call.index == modelTraceCaptureContextIndex {
+					check := response.ContextCheck
+					if challenge != nil || check.LogID == nil || *check.LogID != call.spec.RequestID || string(check.Status) != "unavailable" {
+						t.Error("context check should link to its own capture and be unavailable without input usage")
+					}
+				} else {
+					if challenge == nil || challenge.StatusCode == nil || *challenge.StatusCode != wantStatus {
+						t.Errorf("index %d: capture changed or lost provider status", call.index)
+					}
+					if challenge != nil && wantStatus == http.StatusOK && string(challenge.Outcome) != "succeeded" {
+						t.Errorf("index %d: capture changed successful provider outcome", call.index)
+					}
 				}
 				records, err := store.QuerySessions(debugcapture.SessionQuery{RequestID: call.spec.RequestID, Limit: 2})
 				if mode == "capture_failure" {
