@@ -129,12 +129,17 @@ export default {
         not_model: '响应不像模型回复',
       },
       candidatesTitle: '候选模型',
+      rankingInfo: '关于候选排名',
+      rankingScoreTitle: '分数',
+      probabilityAndScore: '概率 / 分数',
+      probabilityUnavailable: '概率不可用',
       rankingScore: '排名分数：{score}',
       evidence: '归因使用 {used}/{total} 份有效输出',
       challenge: {
         title: '挑战执行',
         succeeded: '成功',
         failed: '失败',
+        retry: '重试',
         log: '查看日志',
         noLog: '未记录请求日志',
         summary: '{succeeded}/{total} 次挑战成功',
@@ -158,6 +163,20 @@ export default {
         probability: '概率',
         detectedAt: '检测时间',
         logId: '请求 ID',
+      },
+      contextCheck: {
+        title: '上下文保真',
+
+        status: {
+          no_anomaly: '未见异常',
+          suspected_injection: '疑似额外上下文',
+          unavailable: '无法检查',
+        },
+        fields: {
+          expectedInputTokens: '预期输入 Token',
+          reportedInputTokens: '上报输入 Token',
+          delta: '差值',
+        },
       },
     },
     usage: {

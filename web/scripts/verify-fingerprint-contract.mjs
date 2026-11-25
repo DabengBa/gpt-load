@@ -20,6 +20,11 @@ try {
   for (const decision of ['scored', 'partial', 'unscorable', 'not_model']) {
     const payload = JSON.parse(await read(`../e2e/fixtures/${decision}.json`))
     const actual = resources.projectModelFingerprintResult(payload)
+    payload.context_check = null
+    // Contract fixtures predate retry metadata; legacy payloads project to
+    // explicit null/false defaults so they stay deep-equal here.
+    payload.run_id ??= null
+    for (const challenge of payload.challenges) challenge.retryable ??= false
     assert.deepEqual(actual, payload)
     assert.equal(actual.analysis.decision, decision)
     if (decision !== 'scored') assert.equal(actual.analysis.probability, null)
@@ -73,6 +78,55 @@ try {
   failure.failure = 'analysis_unavailable'
   failure.challenges[0].log_id = '9f1c2b3a-4d5e-4f60-8a9b-0c1d2e3f4a5b'
   assert.deepEqual(resources.projectModelFingerprintResult(failure), failure)
+  const context = payload()
+  context.context_check = {
+    status: 'suspected_injection',
+    expected_input_tokens: 6,
+    reported_input_tokens: 34,
+    delta: 28,
+    log_id: '9f1c2b3a-4d5e-4f60-8a9b-0c1d2e3f4a5b',
+  }
+  assert.deepEqual(resources.projectModelFingerprintResult(context), context)
+  for (const [field, value] of [
+    ['status', 'confirmed_injection'],
+    ['expected_input_tokens', -1],
+    ['reported_input_tokens', 1.5],
+    ['delta', Infinity],
+    ['log_id', 'invalid'],
+    ['extra', 'secret'],
+  ]) {
+    const invalid = structuredClone(context)
+    invalid.context_check[field] = value
+    assert.throws(() => resources.projectModelFingerprintResult(invalid))
+  }
+  // Retry metadata is optional so legacy payloads (and existing contract
+  // fixtures) stay compatible; absent means no run to retry and not retryable.
+  const legacy = payload()
+  delete legacy.run_id
+  for (const challenge of legacy.challenges) delete challenge.retryable
+  const projectedLegacy = resources.projectModelFingerprintResult(legacy)
+  assert.equal(projectedLegacy.run_id, null)
+  assert.ok(projectedLegacy.challenges.every((challenge) => challenge.retryable === false))
+  const retryable = payload()
+  retryable.run_id = '9f1c2b3a-4d5e-4f60-8a9b-0c1d2e3f4a5b'
+  retryable.challenges[0].retryable = true
+  assert.deepEqual(resources.projectModelFingerprintResult(retryable), retryable)
+  for (const [field, value] of [
+    ['run_id', 'not-a-uuid'],
+    ['run_id', 1],
+  ]) {
+    const invalid = structuredClone(retryable)
+    invalid[field] = value
+    assert.throws(() => resources.projectModelFingerprintResult(invalid))
+  }
+  const invalidRetryable = structuredClone(retryable)
+  invalidRetryable.challenges[0].retryable = 'yes'
+  assert.throws(() => resources.projectModelFingerprintResult(invalidRetryable))
+  for (const forbidden of ['samples', 'sample', 'outputs']) {
+    const invalid = structuredClone(retryable)
+    invalid[forbidden] = []
+    assert.throws(() => resources.projectModelFingerprintResult(invalid))
+  }
   const calls = []
   const target = { group_id: 1, model: 'example' }
   const result = await resources.runModelFingerprint(
@@ -86,6 +140,29 @@ try {
   )
   assert.deepEqual(calls, [
     { path: '/api/modeltrace-probe', options: { method: 'POST', json: target } },
+  ])
+  const retryCalls = []
+  const retryRequest = {
+    group_id: 1,
+    model: 'example',
+    run_id: '9f1c2b3a-4d5e-4f60-8a9b-0c1d2e3f4a5b',
+    challenge_id: 'query-01',
+  }
+  const retried = await resources.retryModelFingerprintChallenge(
+    {
+      request: async (path, options) => {
+        retryCalls.push({ path, options })
+        return retryable
+      },
+    },
+    retryRequest,
+  )
+  assert.deepEqual(retried, retryable)
+  assert.deepEqual(retryCalls, [
+    {
+      path: '/api/modeltrace-probe/retry',
+      options: { method: 'POST', json: retryRequest },
+    },
   ])
   const running = run.startFingerprintRun(run.initialFingerprintRunState, target)
   assert.equal(run.startFingerprintRun(running, target), running)
@@ -113,6 +190,68 @@ try {
   assert.equal(runner.getState().status, 'succeeded')
   runner.close()
   assert.equal(runner.getState().status, 'idle')
+  let retryCount = 0
+  const retryRunner = run.createFingerprintRunner({
+    run: async () => result,
+    retry: () => {
+      retryCount++
+      return new Promise((resolve) => {
+        release = resolve
+      })
+    },
+    describeFailure: () => 'failed',
+    onChange: () => {},
+  })
+  retryRunner.start(target)
+  await new Promise((resolve) => setImmediate(resolve))
+  const beforeRetry = retryRunner.getState()
+  retryRunner.retryChallenge({ ...retryRequest })
+  assert.equal(retryRunner.getState(), beforeRetry)
+  assert.equal(retryCount, 0)
+  retryRunner.close()
+  const retryTarget = target
+  const retryingRunner = run.createFingerprintRunner({
+    run: async () => retryable,
+    retry: () => {
+      retryCount++
+      return new Promise((resolve) => {
+        release = resolve
+      })
+    },
+    describeFailure: () => 'failed',
+    onChange: () => {},
+  })
+  retryingRunner.start(retryTarget)
+  await new Promise((resolve) => setImmediate(resolve))
+  retryingRunner.retryChallenge(retryRequest)
+  retryingRunner.retryChallenge(retryRequest)
+  assert.equal(retryCount, 1)
+  assert.equal(retryingRunner.getState().status, 'retrying')
+  assert.equal(retryingRunner.getState().result, retryable)
+  release(retryable)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(retryingRunner.getState().status, 'succeeded')
+  assert.equal(retryingRunner.getState().result, retryable)
+  retryingRunner.close()
+  assert.equal(retryingRunner.getState().status, 'idle')
+  const failingRetryRunner = run.createFingerprintRunner({
+    run: async () => retryable,
+    retry: async () => {
+      throw new errors.ApiError(502, 'MODELTRACE_UNAVAILABLE', 'down')
+    },
+    describeFailure: resources.fingerprintRunFailure,
+    onChange: () => {},
+  })
+  failingRetryRunner.start(retryTarget)
+  await new Promise((resolve) => setImmediate(resolve))
+  failingRetryRunner.retryChallenge(retryRequest)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(failingRetryRunner.getState().status, 'retry_failed')
+  assert.equal(failingRetryRunner.getState().result, retryable)
+  failingRetryRunner.retryChallenge(retryRequest)
+  assert.equal(failingRetryRunner.getState().status, 'retrying')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(failingRetryRunner.getState().failure, 'unavailable')
   for (const [status, code, expected] of [
     [503, 'MODELTRACE_DISABLED', 'disabled'],
     [503, 'MODELTRACE_MISCONFIGURED', 'misconfigured'],

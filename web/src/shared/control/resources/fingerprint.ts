@@ -33,6 +33,11 @@ export interface ModelFingerprintTargetDto {
   model: string
 }
 
+export interface ModelFingerprintChallengeRetryDto extends ModelFingerprintTargetDto {
+  run_id: string
+  challenge_id: string
+}
+
 export type ModelFingerprintChallengeOutcome = 'succeeded' | 'failed'
 
 export interface ModelFingerprintChallengeDto {
@@ -43,6 +48,7 @@ export interface ModelFingerprintChallengeDto {
   log_id: string | null
   latency_ms: number | null
   status_code: number | null
+  retryable: boolean
 }
 
 export interface ModelFingerprintCandidateDto {
@@ -100,10 +106,12 @@ export interface ModelFingerprintResultDto {
   group_id: number
   group_name: string
   model: string
+  run_id: string | null
 
   challenges: ModelFingerprintChallengeDto[]
   analysis: ModelFingerprintAnalysisDto | null
   failure: FingerprintFailureKind | null
+  context_check: ModelContextCheckDto | null
   tested_at_ms: number
 }
 
@@ -113,10 +121,12 @@ export const modelFingerprintResultFields = [
   'group_id',
   'group_name',
   'model',
+  'run_id',
 
   'challenges',
   'analysis',
   'failure',
+  'context_check',
   'tested_at_ms',
 ] as const satisfies readonly (keyof ModelFingerprintResultDto)[]
 
@@ -128,6 +138,7 @@ const challengeFields = [
   'log_id',
   'latency_ms',
   'status_code',
+  'retryable',
 ] as const satisfies readonly (keyof ModelFingerprintChallengeDto)[]
 const analysisFields = [
   'decision',
@@ -165,6 +176,26 @@ const diagnosticFields = [
 ] as const satisfies readonly (keyof ModelFingerprintDiagnosticDto)[]
 const challengeOutcomes = ['succeeded', 'failed'] as const
 
+export const contextCheckStatuses = ['no_anomaly', 'suspected_injection', 'unavailable'] as const
+
+export type ContextCheckStatus = (typeof contextCheckStatuses)[number]
+
+export interface ModelContextCheckDto {
+  status: ContextCheckStatus
+  expected_input_tokens: number | null
+  reported_input_tokens: number | null
+  delta: number | null
+  log_id: string | null
+}
+
+const contextCheckFields = [
+  'status',
+  'expected_input_tokens',
+  'reported_input_tokens',
+  'delta',
+  'log_id',
+] as const satisfies readonly (keyof ModelContextCheckDto)[]
+
 function invalidResponse(): never {
   throw new InvalidResponseError()
 }
@@ -194,6 +225,7 @@ function projectChallenge(value: unknown): ModelFingerprintChallengeDto {
       record.status_code === null
         ? null
         : projectSafeInteger(record.status_code, { minimum: 0, maximum: 599 }),
+    retryable: record.retryable === undefined ? false : projectBoolean(record.retryable),
   }
 }
 
@@ -219,6 +251,20 @@ function projectDiagnostic(value: unknown): ModelFingerprintDiagnosticDto {
     parsed_numbers: projectSafeInteger(record.parsed_numbers, { minimum: 0 }),
     minimum_numbers: projectSafeInteger(record.minimum_numbers, { minimum: 0 }),
     raw_out_of_range_count: projectSafeInteger(record.raw_out_of_range_count, { minimum: 0 }),
+  }
+}
+
+function projectContextCheck(value: unknown): ModelContextCheckDto {
+  const record = projectRecord(value)
+  assertNoSecretLikeFields(record, contextCheckFields)
+  const tokens = (field: 'expected_input_tokens' | 'reported_input_tokens'): number | null =>
+    record[field] === null ? null : projectSafeInteger(record[field], { minimum: 0 })
+  return {
+    status: projectEnum(record.status, contextCheckStatuses),
+    expected_input_tokens: tokens('expected_input_tokens'),
+    reported_input_tokens: tokens('reported_input_tokens'),
+    delta: record.delta === null ? null : projectSafeInteger(record.delta),
+    log_id: projectNullableRequestID(record.log_id),
   }
 }
 
@@ -295,6 +341,12 @@ export function projectModelFingerprintResult(value: unknown): ModelFingerprintR
   const analysis = record.analysis === null ? null : projectAnalysis(record.analysis)
   const failure =
     record.failure === null ? null : projectEnum(record.failure, fingerprintFailureKinds)
+  // The backend adds `context_check` separately; older payloads without it
+  // remain valid and the dialog simply omits the section.
+  const contextCheck =
+    record.context_check === undefined || record.context_check === null
+      ? null
+      : projectContextCheck(record.context_check)
   // A run either attributes the outputs or explains why it could not; both or
   // neither would make the UI state ambiguous.
   if ((analysis === null) === (failure === null)) invalidResponse()
@@ -302,10 +354,17 @@ export function projectModelFingerprintResult(value: unknown): ModelFingerprintR
     group_id: projectSafeInteger(record.group_id, { minimum: 1 }),
     group_name: projectString(record.group_name, { allowEmpty: true }),
     model: projectNonBlankString(record.model),
+    // Legacy runs predate retry support: null run_id and non-retryable rows
+    // keep the dialog's existing read-only behaviour.
+    run_id:
+      record.run_id === undefined || record.run_id === null
+        ? null
+        : projectNullableRequestID(record.run_id),
 
     challenges,
     analysis,
     failure,
+    context_check: contextCheck,
     tested_at_ms: projectEpochMilliseconds(record.tested_at_ms),
   }
 }
@@ -318,6 +377,23 @@ export async function runModelFingerprint(
     await client.request(modelFingerprintPath, {
       method: 'POST',
       json: { group_id: target.group_id, model: target.model },
+    }),
+  )
+}
+
+export async function retryModelFingerprintChallenge(
+  client: ApiClient,
+  request: ModelFingerprintChallengeRetryDto,
+): Promise<ModelFingerprintResultDto> {
+  return projectModelFingerprintResult(
+    await client.request(`${modelFingerprintPath}/retry`, {
+      method: 'POST',
+      json: {
+        group_id: request.group_id,
+        model: request.model,
+        run_id: request.run_id,
+        challenge_id: request.challenge_id,
+      },
     }),
   )
 }

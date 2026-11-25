@@ -44,7 +44,8 @@ type modelTraceChallengeExecutor struct {
 	execute       func(spec execution.AttemptSpec) execution.AttemptResult
 	// usage is the usage evidence a successful challenge reports, so a test can
 	// assert that a challenge is priced like formal traffic.
-	usage *execution.UsageEvidence
+	usage        *execution.UsageEvidence
+	contextUsage *execution.UsageEvidence
 }
 
 func (executor *modelTraceChallengeExecutor) Execute(
@@ -52,15 +53,24 @@ func (executor *modelTraceChallengeExecutor) Execute(
 	spec execution.AttemptSpec,
 ) execution.AttemptResult {
 	executor.mu.Lock()
-	index := executor.sequence
-	executor.sequence++
-	var prompt string
-	prompt = spec.PromptText
-	executor.prompts = append(executor.prompts, prompt)
+	executor.prompts = append(executor.prompts, spec.PromptText)
 	executor.outputBudgets = append(executor.outputBudgets, spec.ProbeMaxOutputTokens)
 	execute := executor.execute
-	fail := executor.fail
 	reportedUsage := executor.usage
+	if spec.PromptText == modelTraceContextPrompt {
+		if executor.contextUsage != nil {
+			reportedUsage = executor.contextUsage
+		}
+		executor.mu.Unlock()
+		if execute != nil {
+			return execute(spec)
+		}
+		return execution.AttemptResult{DispatchState: execution.DispatchMaybeSent, ResponseStarted: true,
+			StatusCode: http.StatusOK, Header: http.Header{}, GeneratedText: "hello", Usage: reportedUsage}
+	}
+	index := executor.sequence
+	executor.sequence++
+	fail := executor.fail
 	failChallenge := fail != nil && fail(index)
 	executor.mu.Unlock()
 	if execute != nil {
@@ -130,7 +140,10 @@ func TestModelTraceProbeRecordsEveryChallengeAsFormalRequest(t *testing.T) {
 	useModelTraceConfig(t, &ModelTraceConfig{Enabled: true})
 	fixture := newServiceFixture(t)
 	groupID := createGroupWithCredentials(t, fixture, "modeltrace-challenge-secret")
-	executor := &modelTraceChallengeExecutor{}
+	executor := &modelTraceChallengeExecutor{contextUsage: &execution.UsageEvidence{Normalized: usage.Result{
+		State:  usage.StateComplete,
+		Tokens: usage.Tokens{UncachedInput: 10, CacheRead: 24, Output: 100},
+	}}}
 	fixture.service.executor = executor
 
 	response, err := fixture.service.RunModelTraceProbe(t.Context(), modelTraceTestRequest(groupID))
@@ -149,17 +162,21 @@ func TestModelTraceProbeRecordsEveryChallengeAsFormalRequest(t *testing.T) {
 
 	// Every challenge is its own upstream request and its own request-log row.
 	prompts := executor.recordedPrompts()
-	if len(prompts) != modelTraceChallengeCount {
-		t.Fatalf("executed challenges = %d, want %d", len(prompts), modelTraceChallengeCount)
+	if len(prompts) != modelTraceChallengeCount+1 {
+		t.Fatalf("executed requests = %d, want %d including the context check", len(prompts), modelTraceChallengeCount+1)
 	}
-	for _, budget := range executor.recordedOutputBudgets() {
-		if budget != 4096 {
-			t.Errorf("challenge output budget = %d, want 4096", budget)
+	for i, budget := range executor.recordedOutputBudgets() {
+		want := 4096
+		if prompts[i] == modelTraceContextPrompt {
+			want = 256
+		}
+		if budget != want {
+			t.Errorf("output budget = %d, want %d", budget, want)
 		}
 	}
 	events := fixture.probeSink.Events()
-	if len(events) != modelTraceChallengeCount {
-		t.Fatalf("request log events = %d, want one per challenge", len(events))
+	if len(events) != modelTraceChallengeCount+1 {
+		t.Fatalf("request log events = %d, want one per upstream request", len(events))
 	}
 	logged := make(map[string]telemetry.RequestEvent, len(events))
 	for _, event := range events {
@@ -185,6 +202,15 @@ func TestModelTraceProbeRecordsEveryChallengeAsFormalRequest(t *testing.T) {
 		}
 		logged[event.RequestID] = event
 	}
+	check := response.ContextCheck
+	if check.Status != modelTraceContextSuspected || check.ExpectedInputTokens == nil || *check.ExpectedInputTokens != 6 ||
+		check.ReportedInputTokens == nil || *check.ReportedInputTokens != 34 || check.Delta == nil || *check.Delta != 28 || check.LogID == nil {
+		t.Fatalf("context check = %#v, want suspected extra context with a linked request", check)
+	}
+	contextEvent, ok := logged[*check.LogID]
+	if !ok || contextEvent.Usage.Result != executor.contextUsage.Normalized {
+		t.Fatalf("context request log = %#v, want its actual usage", contextEvent)
+	}
 	for _, challenge := range response.Challenges {
 		if challenge.LogID == nil {
 			t.Fatalf("challenge %q has no log id", challenge.ID)
@@ -192,6 +218,10 @@ func TestModelTraceProbeRecordsEveryChallengeAsFormalRequest(t *testing.T) {
 		event, ok := logged[*challenge.LogID]
 		if !ok {
 			t.Fatalf("challenge %q log id %q has no request-log row", challenge.ID, *challenge.LogID)
+		}
+		if event.RequestID == *check.LogID || event.Usage.CredentialID != contextEvent.Usage.CredentialID ||
+			event.Protocol != contextEvent.Protocol || event.Attempts[0].RouteMode != contextEvent.Attempts[0].RouteMode {
+			t.Fatalf("context check must have its own request ID and share the challenge route and credential")
 		}
 		if event.ClientModel != probeTestModel || event.UpstreamModel != probeTestModel {
 			t.Fatalf("challenge %q logged model = %q/%q", challenge.ID, event.ClientModel, event.UpstreamModel)
@@ -231,7 +261,7 @@ func TestModelTraceProbeKeepsPartialOutputsAndLogsFailures(t *testing.T) {
 		t.Fatalf("failed challenges = %d, want 1", failed)
 	}
 	events := fixture.probeSink.Events()
-	if len(events) != modelTraceChallengeCount {
+	if len(events) != modelTraceChallengeCount+1 {
 		t.Fatalf("request log events = %d, want one per challenge", len(events))
 	}
 	upstreamFailures := 0
@@ -298,6 +328,9 @@ func TestModelTraceProbeFailsClearlyWithoutUsableOutputs(t *testing.T) {
 	groupID := createGroupWithCredentials(t, fixture, "modeltrace-allfailed-secret")
 	fixture.service.executor = &modelTraceChallengeExecutor{
 		fail: func(int) bool { return true },
+		contextUsage: &execution.UsageEvidence{Normalized: usage.Result{
+			State: usage.StateComplete, Tokens: usage.Tokens{UncachedInput: 10},
+		}},
 	}
 
 	response, err := fixture.service.RunModelTraceProbe(t.Context(), modelTraceTestRequest(groupID))
@@ -310,8 +343,11 @@ func TestModelTraceProbeFailsClearlyWithoutUsableOutputs(t *testing.T) {
 	if response.Failure == nil || *response.Failure != modelTraceFailureNoOutputs {
 		t.Fatalf("failure = %#v, want %q", response.Failure, modelTraceFailureNoOutputs)
 	}
-	if len(fixture.probeSink.Events()) != modelTraceChallengeCount {
-		t.Fatalf("request log events = %d, want one failed row per challenge",
+	if response.ContextCheck.Status != modelTraceContextNoAnomaly {
+		t.Fatalf("context check = %#v, want a result even when attribution fails", response.ContextCheck)
+	}
+	if len(fixture.probeSink.Events()) != modelTraceChallengeCount+1 {
+		t.Fatalf("request log events = %d, want one row per request",
 			len(fixture.probeSink.Events()))
 	}
 }
@@ -380,8 +416,8 @@ func TestModelTraceProbeFreezesPriceTableBeforeDispatch(t *testing.T) {
 		t.Fatal("no challenges executed")
 	}
 	events := fixture.probeSink.Events()
-	if len(events) != len(response.Challenges) {
-		t.Fatalf("request log events = %d, want one per challenge", len(events))
+	if len(events) != len(response.Challenges)+1 {
+		t.Fatalf("request log events = %d, want one per request", len(events))
 	}
 	for _, event := range events {
 		observation := event.Usage
@@ -576,15 +612,23 @@ func TestModelTraceProbeResponseContract(t *testing.T) {
 	}
 	assertJSONKeys(t, payload, []string{
 		"group_id", "group_name", "model", "challenges", "analysis", "failure",
-		"tested_at_ms",
+		"context_check", "tested_at_ms", "run_id",
 	})
+	var check map[string]json.RawMessage
+	if err := json.Unmarshal(payload["context_check"], &check); err != nil {
+		t.Fatal(err)
+	}
+	assertJSONKeys(t, check, []string{"status", "expected_input_tokens", "reported_input_tokens", "delta", "log_id"})
+	if response.ContextCheck.Status != modelTraceContextUnavailable || response.ContextCheck.LogID == nil {
+		t.Fatalf("context check = %#v, want unavailable with a log for the request missing usage", response.ContextCheck)
+	}
 	var challenges []map[string]json.RawMessage
 	if err := json.Unmarshal(payload["challenges"], &challenges); err != nil {
 		t.Fatal(err)
 	}
 	for _, challenge := range challenges {
 		assertJSONKeys(t, challenge, []string{
-			"id", "expected_count", "outcome", "reason", "log_id", "latency_ms", "status_code",
+			"id", "expected_count", "outcome", "reason", "log_id", "latency_ms", "status_code", "retryable",
 		})
 	}
 
@@ -605,8 +649,14 @@ func TestModelTraceRoutesAndConfigContract(t *testing.T) {
 		probe.Path != "/modeltrace-probe" {
 		t.Fatalf("modeltrace probe route = %#v", probe)
 	}
-	if _, exists := accessKeyControlRoutes["/api/modeltrace-probe"]; exists {
-		t.Fatal("accessKeyControlRoutes must not be widened to the fingerprint probe route")
+	retry := routes["control.modeltrace-probe.retry"]
+	if !reflect.DeepEqual(retry.Methods, []string{http.MethodPost}) || retry.Path != "/modeltrace-probe/retry" {
+		t.Fatalf("modeltrace retry route = %#v", retry)
+	}
+	for _, route := range []string{probe.Path, retry.Path} {
+		if _, exists := accessKeyControlRoutes["/api"+route]; exists {
+			t.Fatalf("accessKeyControlRoutes must not be widened to %s", route)
+		}
 	}
 
 	previous := loadModelTraceConfig()

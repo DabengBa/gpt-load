@@ -1124,13 +1124,26 @@ export function GroupModelsTab({
           />
           <ModelFingerprintDialog
             open={isFingerprintDialogOpen(fingerprint.run)}
-            pending={fingerprint.run.status === 'running'}
-            failure={fingerprint.run.failure}
+            pending={fingerprint.run.status === 'running' || fingerprint.run.status === 'retrying'}
+            failure={fingerprint.run.status === 'failed' ? fingerprint.run.failure : null}
+            retryFailure={
+              fingerprint.run.status === 'retry_failed' ? fingerprint.run.failure : null
+            }
             result={fingerprint.run.result}
             onOpenChange={(open) => {
               if (!open) fingerprint.close()
             }}
             onRetry={retryFingerprint}
+            onRetryChallenge={(challengeId) => {
+              const result = fingerprint.run.result
+              if (result?.run_id == null) return
+              void fingerprint.retryChallenge({
+                group_id: result.group_id,
+                model: result.model,
+                run_id: result.run_id,
+                challenge_id: challengeId,
+              })
+            }}
             onViewLog={viewProbeLog}
           />
           <AlertDialog

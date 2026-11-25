@@ -121,18 +121,31 @@ export function fingerprintSuccess() {
       },
     },
     failure: null,
+    context_check: {
+      status: 'no_anomaly',
+      expected_input_tokens: 6,
+      reported_input_tokens: 10,
+      delta: 4,
+      log_id: fingerprintLogID,
+    },
     tested_at_ms: 1_792_714_550_837,
   }
 }
 
 export interface FingerprintMock {
   calls: unknown[]
+  retryCalls: unknown[]
+  run(result: unknown): void
   failNext(code: string): void
+  retry(result: unknown, options?: { fail?: boolean; wait?: Promise<void> }): void
 }
 
 export async function mockGroupFingerprint(page: Page): Promise<FingerprintMock> {
   const calls: unknown[] = []
+  const retryCalls: unknown[] = []
   const failures: string[] = []
+  let probeResult: unknown = fingerprintSuccess()
+  let retryResult: { result: unknown; fail: boolean; wait?: Promise<void> } | null = null
   await page.addInitScript((key) => {
     window.localStorage.setItem('gpt-load.auth-key', key)
     window.localStorage.setItem('gpt-load.locale', 'en-US')
@@ -241,13 +254,29 @@ export async function mockGroupFingerprint(page: Page): Promise<FingerprintMock>
           'ModelTrace fingerprint detection is not configured',
         )
       }
-      return fulfill(fingerprintSuccess())
+      return fulfill(structuredClone(probeResult))
+    }
+    if (path === '/api/modeltrace-probe/retry') {
+      retryCalls.push(request.postDataJSON())
+      const queued = retryResult
+      retryResult = null
+      if (queued?.wait) await queued.wait
+      if (!queued || queued.fail)
+        return fulfill(undefined, 503, 'MODELTRACE_UNAVAILABLE', 'retry unavailable')
+      return fulfill(queued.result)
     }
     if (path === '/api/logs') return fulfill({ items: [], next_cursor: null })
     return fulfill({})
   })
   return {
     calls,
+    retryCalls,
+    run: (result: unknown) => {
+      probeResult = result
+    },
     failNext: (code: string) => failures.push(code),
+    retry: (result: unknown, options = {}) => {
+      retryResult = { result, fail: options.fail === true, wait: options.wait }
+    },
   }
 }

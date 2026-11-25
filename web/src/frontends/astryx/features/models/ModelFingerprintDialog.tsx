@@ -1,15 +1,6 @@
-import * as stylex from '@stylexjs/stylex'
-import {
-  Badge,
-  Banner,
-  Button,
-  Dialog,
-  DialogHeader,
-  Layout,
-  LayoutContent,
-  LayoutFooter,
-} from '@astryxdesign/core'
-import { LoaderCircle } from 'lucide-react'
+import { Banner, Button, Dialog } from '@astryxdesign/core'
+import { FingerprintPattern, Info, LoaderCircle, X } from 'lucide-react'
+import { useId } from 'react'
 import { useIntl } from 'react-intl'
 
 import type {
@@ -19,433 +10,490 @@ import type {
 import { formatLocalInstant } from '@shared/lib/format'
 
 import { useT } from '../../app/i18n'
+import styles from './ModelFingerprintDialog.module.css'
 
-const NARROW = '@media (max-width: 480px)'
-
-const spin = stylex.keyframes({
-  to: { transform: 'rotate(360deg)' },
-})
-
-const styles = stylex.create({
-  body: {
-    display: 'grid',
-    gap: 'var(--space-4)',
-    minWidth: 0,
-    lineHeight: 'var(--line-normal)',
-  },
-  // Classic QueryFeedback state="loading": bordered sunken box + spinner,
-  // role="status" (same as the probe dialog).
-  loading: {
-    display: 'flex',
-    minHeight: 48,
-    alignItems: 'center',
-    gap: 'var(--space-2)',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: 'var(--color-border-subtle)',
-    borderRadius: 'var(--radius-control)',
-    backgroundColor: 'var(--color-surface-sunken)',
-    color: 'var(--color-text-muted)',
-    padding: 'var(--space-3)',
-  },
-  loadingSpin: {
-    animationName: {
-      default: spin,
-      '@media (prefers-reduced-motion: reduce)': 'none',
-    },
-    animationDuration: '1s',
-    animationTimingFunction: 'linear',
-    animationIterationCount: 'infinite',
-  },
-  details: {
-    display: 'grid',
-    gridTemplateColumns: {
-      default: 'max-content minmax(0, 1fr)',
-      [NARROW]: '1fr',
-    },
-    gap: { default: '8px var(--space-3)', [NARROW]: 'var(--space-1)' },
-    margin: 0,
-    fontSize: 'var(--text-sm)',
-    lineHeight: 'var(--line-normal)',
-  },
-  detailsTerm: {
-    color: 'var(--color-text-muted)',
-  },
-  detailsTermSpaced: {
-    marginTop: { default: 0, [NARROW]: 'var(--space-2)' },
-  },
-  detailsDesc: {
-    display: 'block',
-    minWidth: 0,
-    margin: 0,
-    alignItems: 'center',
-    gap: 'var(--space-2)',
-    color: 'var(--color-text)',
-    fontVariantNumeric: 'tabular-nums',
-    overflowWrap: 'anywhere',
-  },
-  prediction: {
-    fontWeight: 600,
-  },
-  meta: {
-    margin: 0,
-    color: 'var(--color-text-muted)',
-    fontSize: 'var(--text-sm)',
-  },
-  // Classic AppButton variant="link" size="inline" (same as the probe dialog).
-  linkButton: {
-    display: 'inline',
-    minHeight: { default: 0, [NARROW]: 'var(--touch-target)' },
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-    color: { default: 'var(--color-action)', ':hover': 'var(--color-action-hover)' },
-    padding: 0,
-    verticalAlign: 'baseline',
-    cursor: 'pointer',
-    textDecorationLine: { default: 'none', ':hover': 'underline' },
-    borderRadius: 'var(--radius-control)',
-    outline: { default: 'none', ':focus-visible': '2px solid var(--color-focus)' },
-    outlineOffset: 2,
-  },
-  section: {
-    display: 'grid',
-    minWidth: 0,
-    gap: 'var(--space-2)',
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: 'var(--color-border-subtle)',
-    paddingTop: 'var(--space-3)',
-  },
-  sectionTitle: {
-    margin: 0,
-    color: 'var(--color-text)',
-    fontSize: 'var(--text-body)',
-    fontWeight: 600,
-  },
-  list: {
-    display: 'grid',
-    gap: 'var(--space-1)',
-    margin: 0,
-    padding: 0,
-    listStyle: 'none',
-  },
-  row: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) max-content',
-    minWidth: 0,
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: 'var(--space-2)',
-    fontSize: 'var(--text-sm)',
-    paddingBlock: 'var(--space-1)',
-  },
-  rowIdentity: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    minWidth: 0,
-    alignItems: 'baseline',
-    gap: 'var(--space-2)',
-    overflowWrap: 'anywhere',
-  },
-  rowDetail: {
-    flex: 'none',
-    color: 'var(--color-text-muted)',
-    fontVariantNumeric: 'tabular-nums',
-    textAlign: 'end',
-    whiteSpace: 'nowrap',
-  },
-  challenge: {
-    paddingBlock: 'var(--space-2)',
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: 'var(--color-border-subtle)',
-  },
-  identity: {
-    minWidth: 0,
-    overflowWrap: 'anywhere',
-  },
-  challengeMeta: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 'var(--space-2)',
-    color: 'var(--color-text-muted)',
-    fontSize: 'var(--text-meta)',
-    overflowWrap: 'anywhere',
-    fontVariantNumeric: 'tabular-nums',
-  },
-})
-
-/**
- * Fingerprint detection result. The dialog states plainly that the attribution
- * is limited to the detector's reference bank, not proof of
- * the upstream model: an unlisted model is still mapped to its nearest
- * candidate. Every executed challenge keeps its own request-log entry.
- */
 export function ModelFingerprintDialog({
   open,
   pending,
   failure,
+  retryFailure,
   result,
   onOpenChange,
   onRetry,
+  onRetryChallenge,
   onViewLog,
 }: {
   open: boolean
   pending: boolean
   failure: FingerprintRunFailure | null
+  retryFailure: FingerprintRunFailure | null
   result: ModelFingerprintResultDto | null
   onOpenChange: (open: boolean) => void
   onRetry: () => void
+  onRetryChallenge: (challengeId: string) => void
   onViewLog: (logId: string) => void
 }) {
   const t = useT()
   const intl = useIntl()
-
-  function percent(value: number): string {
-    return intl.formatNumber(value, {
+  const id = useId()
+  const title = t('monitor.modelFingerprint.title')
+  const close = t('monitor.modelFingerprint.close')
+  const log = t('monitor.modelFingerprint.challenge.log')
+  const unknown = t('monitor.modelFingerprint.unknownValue')
+  const format = (value: number | null) => (value === null ? unknown : intl.formatNumber(value))
+  const percent = (value: number) =>
+    intl.formatNumber(value, {
       style: 'percent',
       minimumFractionDigits: 1,
       maximumFractionDigits: 1,
     })
-  }
-
-  // Closing is blocked while pending: Escape, scrim, header X and the footer
-  // Close all land here.
-  function setOpen(next: boolean): void {
-    if (!next && pending) return
-    onOpenChange(next)
+  const score = (value: number) => intl.formatNumber(value, { maximumFractionDigits: 3 })
+  const setOpen = (next: boolean) => {
+    if (next || !pending) onOpenChange(next)
   }
 
   const analysis = result?.analysis ?? null
+  const ranked = analysis?.decision === 'partial' || analysis?.decision === 'scored'
+  const calibrated =
+    analysis?.decision === 'scored' &&
+    analysis.probability_status === 'reference_calibrated' &&
+    analysis.probability_scope === 'reference-closed-set'
+  const candidates = ranked ? analysis.results : []
+  const prediction = ranked ? analysis.prediction_name || analysis.prediction : null
+  const predictionFamily = ranked
+    ? analysis.results.find((candidate) => candidate.model === analysis.prediction)?.family
+    : null
+  const scores = candidates.map((candidate) => candidate.score)
+  // Partial rankings can contain negative scores; shift the visual scale without changing the values.
+  const lowestScore = Math.min(0, ...scores)
+  const scoreRange = Math.max(lowestScore, ...scores) - lowestScore
   const challenges = result?.challenges ?? []
-  const succeededChallenges = challenges.filter(
-    (challenge) => challenge.outcome === 'succeeded',
-  ).length
+  const succeeded = challenges.filter((challenge) => challenge.outcome === 'succeeded').length
+  const challengeSummary = t('monitor.modelFingerprint.challenge.summary', {
+    succeeded,
+    total: challenges.length,
+  })
+  const context = result?.context_check ?? null
+  const contextLog = context?.log_id ?? null
+  const contextTone =
+    context?.status === 'no_anomaly'
+      ? 'ok'
+      : context?.status === 'suspected_injection'
+        ? 'warn'
+        : 'neutral'
+  const expected = context?.expected_input_tokens ?? null
+  const reported = context?.reported_input_tokens ?? null
+  const tokenScale = Math.max(1, expected ?? 0, reported ?? 0)
+  const tokenWidth = (value: number) => `${(value / tokenScale) * 100}%`
+  const delta = context?.delta ?? null
+  const deltaLabel =
+    delta === null ? unknown : intl.formatNumber(delta, { signDisplay: 'exceptZero' })
 
   return (
-    <Dialog isOpen={open} onOpenChange={setOpen} width={640} maxHeight="calc(100dvh - 36px)">
-      <Layout
-        header={
-          <DialogHeader
-            title={t('monitor.modelFingerprint.title')}
-            subtitle={t('monitor.modelFingerprint.description')}
-            onOpenChange={setOpen}
-            hasDivider
+    <Dialog
+      isOpen={open}
+      onOpenChange={setOpen}
+      aria-labelledby={id + '-title'}
+      className={styles.shell}
+      width="min(840px, calc(100dvw - 16px))"
+      maxHeight="calc(100dvh - 16px)"
+      padding={0}
+    >
+      <header className={styles.header}>
+        <div className={styles.headerLeft}>
+          <h2
+            id={id + '-title'}
+            className={styles.title}
+            tabIndex={-1}
+            data-autofocus="dialog-title"
+          >
+            {title}
+          </h2>
+          {result && (
+            <span
+              className={styles.route}
+              title={`${result.group_name || `#${result.group_id}`} / ${result.model}`}
+            >
+              <span className={styles.routeGroup}>
+                {result.group_name || `#${result.group_id}`}
+              </span>
+              <span aria-hidden="true">/</span>
+              <span className={styles.routeModel}>{result.model}</span>
+            </span>
+          )}
+        </div>
+        <div className={styles.headerRight}>
+          {result && (
+            <time
+              className={styles.timestamp}
+              dateTime={new Date(result.tested_at_ms).toISOString()}
+              aria-label={t('monitor.modelFingerprint.fields.detectedAt')}
+            >
+              {formatLocalInstant(result.tested_at_ms, intl.locale)}
+            </time>
+          )}
+          <button
+            type="button"
+            className={styles.iconButton}
+            aria-label={close}
+            disabled={pending}
+            onClick={() => setOpen(false)}
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+      </header>
+
+      <div className={styles.body}>
+        {pending && (
+          <div className={styles.loading} role="status">
+            <LoaderCircle size={16} aria-hidden="true" />
+            {t('monitor.modelFingerprint.loading')}
+          </div>
+        )}
+        {failure !== null && (
+          <>
+            <Banner status="error" title={t(`monitor.modelFingerprint.failure.${failure}`)} />
+            <div>
+              <Button
+                variant="secondary"
+                size="sm"
+                label={t('monitor.modelFingerprint.retry')}
+                onClick={onRetry}
+              />
+            </div>
+          </>
+        )}
+        {retryFailure !== null && (
+          <Banner status="error" title={t(`monitor.modelFingerprint.failure.${retryFailure}`)} />
+        )}
+        {result?.failure != null && (
+          <Banner
+            status="warning"
+            title={t(`monitor.modelFingerprint.failure.${result.failure}`)}
           />
-        }
-        content={
-          <LayoutContent isScrollable>
-            <div {...stylex.props(styles.body)}>
-              {pending && (
-                <div {...stylex.props(styles.loading)} role="status">
-                  <LoaderCircle
-                    size={18}
-                    aria-hidden="true"
-                    {...stylex.props(styles.loadingSpin)}
-                  />
-                  <span>{t('monitor.modelFingerprint.loading')}</span>
-                </div>
-              )}
-              {failure !== null && (
-                <>
-                  <Banner status="error" title={t(`monitor.modelFingerprint.failure.${failure}`)} />
-                  <div>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      label={t('monitor.modelFingerprint.retry')}
-                      onClick={onRetry}
-                    />
-                  </div>
-                </>
-              )}
-              {result !== null && result.failure !== null && (
-                <Banner
-                  status="warning"
-                  title={t(`monitor.modelFingerprint.failure.${result.failure}`)}
-                />
-              )}
+        )}
 
-              {result !== null && (
-                <dl {...stylex.props(styles.details)}>
-                  <dt {...stylex.props(styles.detailsTerm)}>
-                    {t('monitor.modelFingerprint.fields.group')}
-                  </dt>
-                  <dd {...stylex.props(styles.detailsDesc)}>
-                    {result.group_name === '' ? `#${result.group_id}` : result.group_name}
-                  </dd>
-                  <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                    {t('monitor.modelFingerprint.fields.model')}
-                  </dt>
-                  <dd {...stylex.props(styles.detailsDesc)}>{result.model}</dd>
-                  {analysis !== null && (
-                    <>
-                      <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                        {t('monitor.modelFingerprint.fields.decision')}
-                      </dt>
-                      <dd {...stylex.props(styles.detailsDesc)}>
-                        {t(`monitor.modelFingerprint.decision.${analysis.decision}`)}
-                      </dd>
-                      {(analysis.decision === 'scored' || analysis.decision === 'partial') && (
-                        <>
-                          <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                            {t('monitor.modelFingerprint.fields.prediction')}
-                          </dt>
-                          <dd {...stylex.props(styles.detailsDesc)}>
-                            <span {...stylex.props(styles.prediction)}>
-                              {analysis.prediction_name || analysis.prediction}
-                            </span>
-                          </dd>
-                          {analysis.decision === 'scored' &&
-                            analysis.probability !== null &&
-                            analysis.probability_status === 'reference_calibrated' &&
-                            analysis.probability_scope === 'reference-closed-set' && (
-                              <>
-                                <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                                  {t('monitor.modelFingerprint.fields.probability')}
-                                </dt>
-                                <dd {...stylex.props(styles.detailsDesc)}>
-                                  {percent(analysis.probability)}
-                                </dd>
-                              </>
-                            )}
-                        </>
-                      )}
-                    </>
-                  )}
-                  <dt {...stylex.props(styles.detailsTerm, styles.detailsTermSpaced)}>
-                    {t('monitor.modelFingerprint.fields.detectedAt')}
-                  </dt>
-                  <dd {...stylex.props(styles.detailsDesc)}>
-                    {formatLocalInstant(result.tested_at_ms, intl.locale)}
-                  </dd>
-                </dl>
-              )}
-
-              {analysis !== null &&
-                analysis.results.length > 0 &&
-                (analysis.decision === 'scored' || analysis.decision === 'partial') && (
-                  <section
-                    {...stylex.props(styles.section)}
-                    aria-labelledby="fingerprint-candidates"
+        {result && (analysis !== null || challenges.length > 0 || context !== null) && (
+          <div className={styles.verdict}>
+            <div className={styles.verdictMain}>
+              <div className={styles.mark}>
+                <FingerprintPattern size={20} aria-hidden="true" />
+              </div>
+              <div className={styles.identity}>
+                <div className={styles.modelLine}>
+                  <span
+                    className={styles.model}
+                    title={prediction ? t('monitor.modelFingerprint.fields.prediction') : undefined}
                   >
-                    <h3 id="fingerprint-candidates" {...stylex.props(styles.sectionTitle)}>
+                    {prediction ||
+                      (analysis
+                        ? t(`monitor.modelFingerprint.decision.${analysis.decision}`)
+                        : title)}
+                  </span>
+                  {predictionFamily && <span className={styles.vendor}>{predictionFamily}</span>}
+                  {ranked && analysis.ranking_score !== null && (
+                    <span
+                      className={styles.metrics}
+                      title={t('monitor.modelFingerprint.rankingScore', {
+                        score: score(analysis.ranking_score),
+                      })}
+                    >
+                      {score(analysis.ranking_score)}
+                    </span>
+                  )}
+                </div>
+                {ranked && (
+                  <div className={styles.flags}>
+                    <span
+                      className={styles.pill}
+                      data-tone={analysis.decision === 'scored' ? 'ok' : 'warn'}
+                    >
+                      {t(`monitor.modelFingerprint.decision.${analysis.decision}`)}
+                    </span>
+                    {calibrated && analysis.probability !== null ? (
+                      <span className={styles.pill} data-tone="ok">
+                        {t('monitor.modelFingerprint.fields.probability')}{' '}
+                        <span>{percent(analysis.probability)}</span>
+                      </span>
+                    ) : analysis.decision !== 'partial' ? (
+                      <span className={styles.pill} data-tone="neutral">
+                        {t('monitor.modelFingerprint.probabilityUnavailable')}
+                      </span>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            </div>
+            {(challenges.length > 0 || (expected !== null && reported !== null)) && (
+              <div className={styles.signals}>
+                {challenges.length > 0 && (
+                  <span className={styles.segments} title={challengeSummary}>
+                    {challenges.map((challenge) => (
+                      <span
+                        key={challenge.id}
+                        aria-hidden="true"
+                        className={styles.segment}
+                        data-tone={challenge.outcome === 'succeeded' ? 'ok' : 'error'}
+                      />
+                    ))}
+                    <span className={styles.summary}>
+                      {succeeded}/{challenges.length}
+                    </span>
+                  </span>
+                )}
+                {expected !== null && reported !== null && (
+                  <span className={styles.pill} data-tone={contextTone} aria-hidden="true">
+                    {format(expected)} → {format(reported)} tok
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {(candidates.length > 0 || context !== null) && (
+          <div className={styles.bento} data-paired={candidates.length > 0 && context !== null}>
+            {candidates.length > 0 && analysis && (
+              <section className={styles.card} aria-labelledby={id + '-candidates'}>
+                <div className={styles.cardHead}>
+                  <div className={styles.cardLabel}>
+                    <h3 className={styles.cardTitle} id={id + '-candidates'}>
                       {t('monitor.modelFingerprint.candidatesTitle')}
                     </h3>
-                    <ul {...stylex.props(styles.list)}>
-                      {analysis.results.map((candidate) => (
-                        <li key={candidate.model} {...stylex.props(styles.row)}>
-                          <span {...stylex.props(styles.rowIdentity)}>
-                            <span {...stylex.props(styles.identity)}>
-                              {candidate.display_name || candidate.model}
-                            </span>
-                            {candidate.family !== '' && (
-                              <span {...stylex.props(styles.meta)}>{candidate.family}</span>
-                            )}
+                    <details className={styles.notice}>
+                      <summary aria-label={t('monitor.modelFingerprint.rankingInfo')}>
+                        <Info size={14} aria-hidden="true" />
+                      </summary>
+                      <p>{t('monitor.modelFingerprint.notice')}</p>
+                    </details>
+                  </div>
+                  <span className={styles.meta}>
+                    {t(
+                      calibrated
+                        ? 'monitor.modelFingerprint.probabilityAndScore'
+                        : 'monitor.modelFingerprint.rankingScoreTitle',
+                    )}
+                  </span>
+                </div>
+                <ol
+                  className={styles.candidateList}
+                  tabIndex={candidates.length > 5 ? 0 : undefined}
+                >
+                  {candidates.map((candidate, index) => {
+                    const name = candidate.display_name || candidate.model
+                    const candidateScore = score(candidate.score)
+                    const fill = scoreRange > 0 ? (candidate.score - lowestScore) / scoreRange : 0
+                    return (
+                      <li
+                        key={candidate.model}
+                        className={styles.candidateRow}
+                        data-top={index === 0}
+                      >
+                        <svg className={styles.candidateFill} aria-hidden="true">
+                          <rect width={`${fill * 100}%`} height="100%" rx="7" />
+                        </svg>
+                        <span className={styles.rank}>#{index + 1}</span>
+                        <span className={styles.candidateIdentity}>
+                          <span className={styles.candidateName} title={name}>
+                            {name}
                           </span>
-                          {analysis.decision === 'scored' &&
-                          analysis.probability_status === 'reference_calibrated' &&
-                          analysis.probability_scope === 'reference-closed-set' &&
-                          candidate.probability !== null ? (
-                            <span {...stylex.props(styles.rowDetail)}>
+                          {candidate.family && (
+                            <span className={styles.candidateVendor}>{candidate.family}</span>
+                          )}
+                        </span>
+                        <span className={styles.candidateMetric}>
+                          {calibrated && candidate.probability !== null && (
+                            <span className={styles.candidateProbability}>
                               {percent(candidate.probability)}
                             </span>
-                          ) : (
-                            <span {...stylex.props(styles.rowDetail)}>
-                              {t('monitor.modelFingerprint.rankingScore', {
-                                score: intl.formatNumber(candidate.score, {
-                                  maximumFractionDigits: 3,
-                                }),
-                              })}
-                            </span>
                           )}
-                        </li>
-                      ))}
-                    </ul>
-                    <p {...stylex.props(styles.meta)}>
-                      {t('monitor.modelFingerprint.evidence', {
-                        used: analysis.used_outputs,
-                        total: challenges.length,
-                      })}
-                    </p>
-                  </section>
-                )}
+                          <span
+                            className={styles.candidateScore}
+                            title={t('monitor.modelFingerprint.rankingScore', {
+                              score: candidateScore,
+                            })}
+                          >
+                            {candidateScore}
+                          </span>
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ol>
+              </section>
+            )}
 
-              {challenges.length > 0 && (
-                <section {...stylex.props(styles.section)} aria-labelledby="fingerprint-challenges">
-                  <h3 id="fingerprint-challenges" {...stylex.props(styles.sectionTitle)}>
-                    {t('monitor.modelFingerprint.challenge.title')}
-                  </h3>
-                  <ul {...stylex.props(styles.list)}>
-                    {challenges.map((challenge) => {
-                      const logId = challenge.log_id
-                      return (
-                        <li key={challenge.id} {...stylex.props(styles.challenge)}>
-                          <div {...stylex.props(styles.row)}>
-                            <span {...stylex.props(styles.rowIdentity)}>
-                              <span {...stylex.props(styles.identity)}>{challenge.id}</span>
-                              <Badge
-                                variant={challenge.outcome === 'succeeded' ? 'success' : 'error'}
-                                label={t(`monitor.modelFingerprint.challenge.${challenge.outcome}`)}
-                              />
-                            </span>
-                            <span {...stylex.props(styles.rowDetail)}>
-                              {challenge.status_code ?? t('monitor.modelFingerprint.unknownValue')}
-                            </span>
-                          </div>
-                          <div {...stylex.props(styles.challengeMeta)}>
-                            {challenge.reason !== null && (
-                              <span>{t(`monitor.modelProbe.reason.${challenge.reason}`)}</span>
-                            )}
-                            {challenge.latency_ms !== null && (
-                              <span>
-                                {t('monitor.modelProbe.latency', {
-                                  value: intl.formatNumber(challenge.latency_ms),
-                                })}
-                              </span>
-                            )}
-                            {logId === null ? (
-                              <span>{t('monitor.modelFingerprint.challenge.noLog')}</span>
-                            ) : (
-                              <button
-                                type="button"
-                                {...stylex.props(styles.linkButton)}
-                                onClick={() => onViewLog(logId)}
-                              >
-                                {t('monitor.modelFingerprint.challenge.log')}
-                              </button>
-                            )}
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                  <p {...stylex.props(styles.meta)}>
-                    {t('monitor.modelFingerprint.challenge.summary', {
-                      succeeded: succeededChallenges,
+            {context !== null && (
+              <section className={styles.card} aria-labelledby={id + '-context'}>
+                <div className={styles.cardHead}>
+                  <div className={styles.cardLabel}>
+                    <h3 className={styles.cardTitle} id={id + '-context'}>
+                      {t('monitor.modelFingerprint.contextCheck.title')}
+                    </h3>
+                    <span className={styles.pill} data-tone={contextTone}>
+                      {t(`monitor.modelFingerprint.contextCheck.status.${context.status}`)}
+                    </span>
+                  </div>
+                  {contextLog !== null && (
+                    <button
+                      type="button"
+                      className={styles.link}
+                      onClick={() => onViewLog(contextLog)}
+                    >
+                      {log}
+                    </button>
+                  )}
+                </div>
+                <div className={styles.fidelity}>
+                  <div className={styles.tokenBars}>
+                    <div className={styles.tokenRow}>
+                      <div className={styles.tokenLabel}>
+                        <span>
+                          {t('monitor.modelFingerprint.contextCheck.fields.expectedInputTokens')}
+                        </span>
+                        <strong>{format(expected)}</strong>
+                      </div>
+                      <div className={styles.track} aria-hidden="true">
+                        {expected !== null && (
+                          <svg>
+                            <rect
+                              className={styles.base}
+                              width={tokenWidth(expected)}
+                              height="100%"
+                            />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                    <div className={styles.tokenRow}>
+                      <div className={styles.tokenLabel}>
+                        <span>
+                          {t('monitor.modelFingerprint.contextCheck.fields.reportedInputTokens')}
+                        </span>
+                        <strong>{format(reported)}</strong>
+                      </div>
+                      <div className={styles.track} aria-hidden="true" data-tone={contextTone}>
+                        {reported !== null && (
+                          <svg>
+                            <rect
+                              className={styles.extra}
+                              width={tokenWidth(reported)}
+                              height="100%"
+                            />
+                            <rect
+                              className={styles.match}
+                              width={tokenWidth(Math.min(reported, expected ?? 0))}
+                              height="100%"
+                            />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className={styles.delta}>
+                    <span>{t('monitor.modelFingerprint.contextCheck.fields.delta')}</span>
+                    <strong className={styles.deltaValue}>{deltaLabel}</strong>
+                  </div>
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
+        {challenges.length > 0 && (
+          <section className={styles.card} aria-labelledby={id + '-challenges'}>
+            <div className={styles.cardHead}>
+              <h3 className={styles.cardTitle} id={id + '-challenges'}>
+                {t('monitor.modelFingerprint.challenge.title')}
+              </h3>
+              <span className={styles.meta}>
+                {analysis
+                  ? t('monitor.modelFingerprint.evidence', {
+                      used: analysis.used_outputs,
                       total: challenges.length,
-                    })}
-                  </p>
-                </section>
-              )}
-
-              <Banner status="info" title={t('monitor.modelFingerprint.notice')} />
+                    })
+                  : challengeSummary}
+              </span>
             </div>
-          </LayoutContent>
-        }
-        footer={
-          <LayoutFooter hasDivider>
-            <Button
-              variant="secondary"
-              size="sm"
-              isDisabled={pending}
-              label={t('monitor.modelFingerprint.close')}
-              onClick={() => setOpen(false)}
-            />
-          </LayoutFooter>
-        }
-      />
+            <ul className={styles.probeList}>
+              {challenges.map((challenge) => {
+                const logId = challenge.log_id
+                const ok = challenge.outcome === 'succeeded'
+                const tone = ok ? 'ok' : 'error'
+                const reason =
+                  challenge.reason === null
+                    ? null
+                    : t(`monitor.modelProbe.reason.${challenge.reason}`)
+                const [, tag = challenge.id, uuid] = /^(probe-\d+)-(.+)$/.exec(challenge.id) ?? []
+                return (
+                  <li key={challenge.id} className={styles.probeRow} data-error={!ok}>
+                    <div className={styles.probeIdentity} title={challenge.id}>
+                      <span className={styles.dot} data-tone={tone} aria-hidden="true" />
+                      <span className={styles.probeTag}>{tag}</span>
+                      {uuid !== undefined && <span className={styles.probeID}>{uuid}</span>}
+                    </div>
+                    <span className={styles.pill} data-tone={tone}>
+                      <span className={styles.srOnly}>
+                        {t(`monitor.modelFingerprint.challenge.${challenge.outcome}`)}{' '}
+                      </span>
+                      {challenge.status_code ?? unknown}
+                      {reason !== null && ` ${reason}`}
+                    </span>
+                    <span className={styles.latency}>
+                      {challenge.latency_ms === null
+                        ? unknown
+                        : t('monitor.modelProbe.latency', { value: format(challenge.latency_ms) })}
+                    </span>
+                    <div className={styles.actions}>
+                      {result?.run_id != null && challenge.retryable && (
+                        <button
+                          type="button"
+                          className={styles.action}
+                          data-tone="error"
+                          disabled={pending}
+                          onClick={() => onRetryChallenge(challenge.id)}
+                        >
+                          {t('monitor.modelFingerprint.challenge.retry')}
+                        </button>
+                      )}
+                      {logId === null ? (
+                        <span className={styles.srOnly}>
+                          {t('monitor.modelFingerprint.challenge.noLog')}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className={styles.action}
+                          onClick={() => onViewLog(logId)}
+                        >
+                          {log}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        )}
+        {result !== null && candidates.length === 0 && (
+          <p className={styles.meta}>{t('monitor.modelFingerprint.notice')}</p>
+        )}
+      </div>
+      <footer className={styles.footer}>
+        <span className={styles.keyHint} aria-hidden="true">
+          <kbd>Esc</kbd>
+          {close}
+        </span>
+        <Button
+          variant="secondary"
+          size="sm"
+          isDisabled={pending}
+          label={close}
+          onClick={() => setOpen(false)}
+        />
+      </footer>
     </Dialog>
   )
 }
