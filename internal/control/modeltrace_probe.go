@@ -9,6 +9,7 @@ ModelTrace 指纹检测把「模型归因」做成一次正式模型使用：
    usage 按正式请求规则计量；
 4. 把所有可用输出交给本地检测器得到归因结果。
 
+上下文检查复用同一路由与凭据发送独立请求，结果不进入归因分析。
 归因结果只作为独立诊断事实返回，不参与健康、路由、熔断、重试或亲和决策；
 本文件也不调用任何健康恢复入口。
 */
@@ -81,18 +82,21 @@ type ModelTraceChallengeResponse struct {
 	LogID         *string                    `json:"log_id"`
 	LatencyMS     *int64                     `json:"latency_ms"`
 	StatusCode    *int                       `json:"status_code"`
+	Retryable     bool                       `json:"retryable"`
 }
 
 // ModelTraceProbeResponse is the complete detection result. Analyses and
 // challenges are independent: a failed analysis keeps every challenge row.
 type ModelTraceProbeResponse struct {
-	GroupID    uint                          `json:"group_id"`
-	GroupName  string                        `json:"group_name"`
-	Model      string                        `json:"model"`
-	Challenges []ModelTraceChallengeResponse `json:"challenges"`
-	Analysis   *lmfpd.Analysis               `json:"analysis"`
-	Failure    *ModelTraceFailure            `json:"failure"`
-	TestedAtMS int64                         `json:"tested_at_ms"`
+	GroupID      uint                          `json:"group_id"`
+	GroupName    string                        `json:"group_name"`
+	Model        string                        `json:"model"`
+	RunID        *string                       `json:"run_id"`
+	Challenges   []ModelTraceChallengeResponse `json:"challenges"`
+	Analysis     *lmfpd.Analysis               `json:"analysis"`
+	Failure      *ModelTraceFailure            `json:"failure"`
+	ContextCheck ModelTraceContextCheck        `json:"context_check"`
+	TestedAtMS   int64                         `json:"tested_at_ms"`
 }
 
 func validateModelTraceRequest(request ModelTraceRequest) error {
@@ -103,10 +107,9 @@ func validateModelTraceRequest(request ModelTraceRequest) error {
 }
 
 type modelTraceChallengeTarget struct {
-	protocol        protocol.Protocol
-	routeMode       channel.RouteMode
-	model           string
-	maxOutputTokens int
+	protocol  protocol.Protocol
+	routeMode channel.RouteMode
+	model     string
 }
 
 // modelTraceTarget resolves the declared generative route of one model. It
@@ -122,10 +125,9 @@ func modelTraceTarget(group state.GroupView, model string) (modelTraceChallengeT
 		return modelTraceChallengeTarget{}, false
 	}
 	return modelTraceChallengeTarget{
-		protocol:        clientProtocol,
-		routeMode:       routeMode,
-		model:           model,
-		maxOutputTokens: modelTraceChallengeOutputTokens,
+		protocol:  clientProtocol,
+		routeMode: routeMode,
+		model:     model,
 	}, true
 }
 
@@ -136,31 +138,14 @@ func (s *Service) RunModelTraceProbe(
 	ctx context.Context,
 	request ModelTraceRequest,
 ) (ModelTraceProbeResponse, error) {
-	if err := validateModelTraceRequest(request); err != nil {
+	ctx, done, err := s.beginModelTraceRun(ctx, request)
+	if err != nil {
 		return ModelTraceProbeResponse{}, err
 	}
-	if cfg := loadModelTraceConfig(); cfg == nil || !cfg.Enabled {
-		return ModelTraceProbeResponse{}, app_errors.ErrModelTraceDisabled
-	}
-	key := fmt.Sprintf("%d:%s", request.GroupID, request.Model)
-	if _, loaded := modelTraceInFlight.LoadOrStore(key, struct{}{}); loaded {
-		return ModelTraceProbeResponse{}, app_errors.ErrDuplicateResource
-	}
-	defer modelTraceInFlight.Delete(key)
-	select {
-	case modelTraceSlots <- struct{}{}:
-		defer func() { <-modelTraceSlots }()
-	case <-ctx.Done():
-		return ModelTraceProbeResponse{}, ctx.Err()
-	}
-	ctx, cancel := context.WithTimeout(ctx, modelTraceRunDeadline)
-	defer cancel()
+	defer done()
 	detector, err := getModelTraceDetector(ctx)
 	if err != nil {
 		return ModelTraceProbeResponse{}, app_errors.ErrModelTraceUnavailable
-	}
-	if s == nil {
-		return ModelTraceProbeResponse{}, app_errors.ErrInternalServer
 	}
 	group, target, credential, err := s.captureModelTraceTarget(ctx, request)
 	if err != nil {
@@ -170,20 +155,58 @@ func (s *Service) RunModelTraceProbe(
 	if err != nil {
 		return ModelTraceProbeResponse{}, err
 	}
-	executed := s.executeModelTraceChallenges(ctx, group, target, credential, challenges)
+	executed := s.executeModelTraceRequests(ctx, group, target, credential, challenges)
+	outcome := s.finishModelTraceRun(detector, executed, challenges)
+	s.keepModelTraceRun("", &outcome, executed, challenges)
+	return outcome, nil
+}
+
+func (s *Service) beginModelTraceRun(ctx context.Context, request ModelTraceRequest) (context.Context, func(), error) {
+	if err := validateModelTraceRequest(request); err != nil {
+		return nil, nil, err
+	}
+	if cfg := loadModelTraceConfig(); cfg == nil || !cfg.Enabled {
+		return nil, nil, app_errors.ErrModelTraceDisabled
+	}
+	if s == nil {
+		return nil, nil, app_errors.ErrInternalServer
+	}
+	key := fmt.Sprintf("%d:%s", request.GroupID, request.Model)
+	if _, loaded := modelTraceInFlight.LoadOrStore(key, struct{}{}); loaded {
+		return nil, nil, app_errors.ErrDuplicateResource
+	}
+	select {
+	case modelTraceSlots <- struct{}{}:
+	case <-ctx.Done():
+		modelTraceInFlight.Delete(key)
+		return nil, nil, ctx.Err()
+	}
+	ctx, cancel := context.WithTimeout(ctx, modelTraceRunDeadline)
+	return ctx, func() {
+		cancel()
+		<-modelTraceSlots
+		modelTraceInFlight.Delete(key)
+	}, nil
+}
+
+func (s *Service) finishModelTraceRun(detector *lmfpd.Detector, executed modelTraceExecutionContext, challenges []modelTraceChallengeDTO) ModelTraceProbeResponse {
 	outcome := ModelTraceProbeResponse{
-		GroupID:    group.ID,
-		GroupName:  group.Name,
-		Model:      target.model,
-		Challenges: executed.challenges,
-		TestedAtMS: probeTestedAtMS(s.now().UTC()),
+		GroupID:      executed.group.ID,
+		GroupName:    executed.group.Name,
+		Model:        executed.target.model,
+		Challenges:   executed.challenges,
+		ContextCheck: executed.contextCheck,
+		TestedAtMS:   probeTestedAtMS(s.now().UTC()),
+	}
+	defer func() { logModelTraceProbe(outcome) }()
+	for i := range outcome.Challenges {
+		outcome.Challenges[i].Retryable = outcome.Challenges[i].Outcome == modelTraceChallengeFailed
 	}
 	outputs := modelTraceAcceptedOutputs(executed, challenges)
 	if len(outputs) == 0 {
 		failure := modelTraceFailureNoOutputs
 		outcome.Failure = &failure
-		logModelTraceProbe(outcome)
-		return outcome, nil
+		return outcome
 	}
 	sdkOutputs := make([]lmfpd.Output, len(outputs))
 	for i, output := range outputs {
@@ -193,17 +216,19 @@ func (s *Service) RunModelTraceProbe(
 	if err != nil {
 		failure := modelTraceFailureAnalysisUnavailable
 		outcome.Failure = &failure
-		logModelTraceProbe(outcome)
-		return outcome, nil
+		return outcome
 	}
 	// SDK indices refer to the filtered input slice, not the challenge list.
 	// Translate only diagnostic indices; scoring receives the exact same inputs.
 	for i := range analysis.Diagnostics {
-		analysis.Diagnostics[i].Index = outputs[analysis.Diagnostics[i].Index].ChallengeIndex
+		diagnostic := &analysis.Diagnostics[i]
+		diagnostic.Index = outputs[diagnostic.Index].ChallengeIndex
+		if !diagnostic.Accepted {
+			outcome.Challenges[diagnostic.Index].Retryable = true
+		}
 	}
 	outcome.Analysis = analysis
-	logModelTraceProbe(outcome)
-	return outcome, nil
+	return outcome
 }
 
 func (s *Service) captureModelTraceTarget(
@@ -237,14 +262,14 @@ type modelTraceExecutionContext struct {
 	// priceTable is frozen once, before any challenge is dispatched, so a price
 	// publication that lands mid-run cannot re-price a request that was already
 	// sent. It mirrors the gateway, which freezes the table before forwarding.
-	priceTable *pricing.Table
-	challenges []ModelTraceChallengeResponse
-	outputs    []modelTraceOutput
+	priceTable   *pricing.Table
+	challenges   []ModelTraceChallengeResponse
+	outputs      []modelTraceOutput
+	contextCheck ModelTraceContextCheck
 }
 
-// modelTraceChallengeRequest retains one executed challenge for the log pass.
-type modelTraceChallengeRequest struct {
-	response    ModelTraceChallengeResponse
+// modelTraceRequestResult retains one executed request for the log pass.
+type modelTraceRequestResult struct {
 	requestID   string
 	attempt     execution.AttemptResult
 	sequence    uint32
@@ -252,7 +277,7 @@ type modelTraceChallengeRequest struct {
 	duration    time.Duration
 }
 
-func (s *Service) executeModelTraceChallenges(
+func (s *Service) executeModelTraceRequests(
 	ctx context.Context,
 	group state.GroupView,
 	target modelTraceChallengeTarget,
@@ -268,6 +293,11 @@ func (s *Service) executeModelTraceChallenges(
 		outputs:    make([]modelTraceOutput, len(challenges)),
 	}
 	var waitGroup sync.WaitGroup
+	waitGroup.Add(1)
+	go func() {
+		defer waitGroup.Done()
+		run.contextCheck = s.runModelTraceContextCheck(ctx, &run)
+	}()
 	for index, challenge := range challenges {
 		waitGroup.Add(1)
 		go func(index int, challenge modelTraceChallengeDTO) {
@@ -288,14 +318,14 @@ func (s *Service) runModelTraceChallenge(
 	response := ModelTraceChallengeResponse{
 		ID: challenge.ID, ExpectedCount: challenge.ExpectedCount,
 	}
-	executed, err := s.executeModelTraceChallenge(ctx, run, challenge)
+	executed, err := s.executeModelTraceRequest(ctx, run, challenge.Prompt, modelTraceChallengeOutputTokens)
 	if err != nil {
 		response.Outcome = modelTraceChallengeFailed
 		response.Reason = modelTraceReason(ProbeReasonUnknown)
 		run.challenges[index] = response
 		return
 	}
-	response.LogID = s.emitModelTraceRequestLog(run, challenge, executed)
+	response.LogID = s.emitModelTraceRequestLog(run, executed)
 	statusCode := executed.attempt.StatusCode
 	latency := max(executed.duration.Milliseconds(), 0)
 	response.StatusCode = &statusCode
@@ -303,7 +333,7 @@ func (s *Service) runModelTraceChallenge(
 	if answer := strings.TrimSpace(executed.attempt.GeneratedText); answer != "" {
 		response.Outcome = modelTraceChallengeSucceeded
 		run.outputs[index] = modelTraceOutput{
-			PromptID: challenge.ID, ExpectedCount: challenge.ExpectedCount, Text: answer,
+			PromptID: challenge.ID, ExpectedCount: challenge.ExpectedCount, Text: strings.Clone(answer),
 		}
 	} else {
 		response.Outcome = modelTraceChallengeFailed
@@ -312,41 +342,40 @@ func (s *Service) runModelTraceChallenge(
 	run.challenges[index] = response
 }
 
-// executeModelTraceChallenge dispatches exactly one challenge as a formal
-// attempt. The attempt is validated by the execution contract, so a malformed
-// challenge cannot silently widen what reaches an upstream.
-func (s *Service) executeModelTraceChallenge(
+// executeModelTraceRequest dispatches one diagnostic prompt as a formal attempt.
+func (s *Service) executeModelTraceRequest(
 	ctx context.Context,
 	run *modelTraceExecutionContext,
-	challenge modelTraceChallengeDTO,
-) (modelTraceChallengeRequest, error) {
+	prompt string,
+	maxOutputTokens int,
+) (modelTraceRequestResult, error) {
 	if s == nil || run == nil || s.executor == nil || s.channelRegistry == nil || s.encryption == nil {
-		return modelTraceChallengeRequest{}, app_errors.ErrInternalServer
+		return modelTraceRequestResult{}, app_errors.ErrInternalServer
 	}
 	if err := ctx.Err(); err != nil {
-		return modelTraceChallengeRequest{}, err
+		return modelTraceRequestResult{}, err
 	}
 	plaintext, err := s.encryption.Decrypt(run.credential.EncryptedValue)
 	if err != nil {
-		return modelTraceChallengeRequest{}, app_errors.ErrInternalServer
+		return modelTraceRequestResult{}, app_errors.ErrInternalServer
 	}
 	credential, err := normalizeStoredCredential(s.channelRegistry, run.group.ChannelID, plaintext)
 	plaintext = ""
 	if err != nil {
-		return modelTraceChallengeRequest{}, app_errors.ErrInternalServer
+		return modelTraceRequestResult{}, app_errors.ErrInternalServer
 	}
 	apiKey, _ := credential.Value("api_key")
 	proxy, proxyFingerprint, err := probeAttemptProxy(run.group.Proxy)
 	if err != nil {
-		return modelTraceChallengeRequest{}, app_errors.ErrInternalServer
+		return modelTraceRequestResult{}, app_errors.ErrInternalServer
 	}
 	requestID, err := newOperationID(cryptorand.Reader)
 	if err != nil {
-		return modelTraceChallengeRequest{}, app_errors.ErrInternalServer
+		return modelTraceRequestResult{}, app_errors.ErrInternalServer
 	}
 	attemptID, err := newOperationID(cryptorand.Reader)
 	if err != nil {
-		return modelTraceChallengeRequest{}, app_errors.ErrInternalServer
+		return modelTraceRequestResult{}, app_errors.ErrInternalServer
 	}
 	spec := execution.NewAttemptSpec(execution.AttemptSpec{
 		RequestID: requestID, AttemptID: attemptID, Sequence: 1,
@@ -363,13 +392,13 @@ func (s *Service) executeModelTraceChallenge(
 			run.credential.ID, modelTraceCredentialVersion(run.credential), run.credential.IdentityGeneration,
 			credential.CanonicalJSON(),
 		),
-		ProbeMaxOutputTokens: run.target.maxOutputTokens,
-		PromptText:           challenge.Prompt,
+		ProbeMaxOutputTokens: maxOutputTokens,
+		PromptText:           prompt,
 		Proxy:                proxy,
 		ProxyFingerprint:     proxyFingerprint,
 	})
 	if err := spec.Validate(); err != nil {
-		return modelTraceChallengeRequest{}, app_errors.ErrInternalServer
+		return modelTraceRequestResult{}, app_errors.ErrInternalServer
 	}
 	probe := &credentialProbeExecutor{channels: s.channelRegistry, captureFactory: s.probeCaptures}
 	executionContext, finishCapture := probe.startCapture(ctx, spec)
@@ -377,7 +406,7 @@ func (s *Service) executeModelTraceChallenge(
 	attempt := s.executor.Execute(executionContext, spec)
 	completedAt := s.now().UTC()
 	finishCapture(attempt)
-	return modelTraceChallengeRequest{
+	return modelTraceRequestResult{
 		requestID: requestID, attempt: attempt, sequence: spec.Sequence,
 		completedAt: completedAt, duration: max(completedAt.Sub(startedAt), 0),
 	}, nil
@@ -442,28 +471,26 @@ func classifyModelTraceEvidence(result execution.AttemptResult) *ProbeReason {
 	return modelTraceReason(ProbeReasonUpstreamError)
 }
 
-// emitModelTraceRequestLog writes the formal request-log row of one challenge.
+// emitModelTraceRequestLog writes the formal request-log row of one diagnostic request.
 // The row is a real model request: usage is priced exactly like traffic, the
 // outcome carries the attempt's own failure category, and only the attribution
 // itself stays outside the log. The write keeps the log pipeline's best-effort
 // semantics and never changes the response.
 func (s *Service) emitModelTraceRequestLog(
 	run *modelTraceExecutionContext,
-	challenge modelTraceChallengeDTO,
-	executed modelTraceChallengeRequest,
+	executed modelTraceRequestResult,
 ) *string {
 	if s == nil || s.requestLogSink == nil || executed.requestID == "" {
 		return nil
 	}
-	s.requestLogSink.Emit(buildModelTraceRequestEvent(run, challenge, executed, run.priceTable, s.now().UTC()))
+	s.requestLogSink.Emit(buildModelTraceRequestEvent(run, executed, run.priceTable, s.now().UTC()))
 	logID := executed.requestID
 	return &logID
 }
 
 func buildModelTraceRequestEvent(
 	run *modelTraceExecutionContext,
-	challenge modelTraceChallengeDTO,
-	executed modelTraceChallengeRequest,
+	executed modelTraceRequestResult,
 	priceTable *pricing.Table,
 	completedAt time.Time,
 ) telemetry.RequestEvent {
@@ -552,7 +579,7 @@ func buildModelTraceRequestEvent(
 // missing rather than silently becoming free.
 func modelTraceUsageObservation(
 	run *modelTraceExecutionContext,
-	executed modelTraceChallengeRequest,
+	executed modelTraceRequestResult,
 	result execution.AttemptResult,
 	priceTable *pricing.Table,
 ) telemetry.UsageObservation {

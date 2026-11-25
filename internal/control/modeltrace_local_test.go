@@ -204,8 +204,8 @@ func TestFingerprintLocalWithoutServiceConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("local RunModelTraceProbe() = %v, want success without service configuration", err)
 	}
-	if len(executor.recordedPrompts()) != 3 || response.Analysis == nil {
-		t.Fatalf("local response = %#v, want three challenges and SDK analysis", response)
+	if len(executor.recordedPrompts()) != modelTraceChallengeCount+1 || response.Analysis == nil {
+		t.Fatalf("local response = %#v, want challenges, context check and SDK analysis", response)
 	}
 	encoded, err := json.Marshal(response)
 	if err != nil {

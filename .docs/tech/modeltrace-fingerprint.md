@@ -10,6 +10,8 @@ relations:
 code:
   paths:
     - internal/control/modeltrace_probe.go
+    - internal/control/modeltrace_retry.go
+    - internal/control/modeltrace_context_check.go
     - internal/control/modeltrace_client.go
     - internal/channel/compiler.go
     - internal/control/modeltrace_detector.go
@@ -44,6 +46,12 @@ upstream model's identity.
 - The control API is `POST /api/modeltrace-probe` with `{group_id, model}`.
   Route resolution uses the saved model's ModelTrace route, compiled alongside
   the health-probe route. Unsupported or unsaved targets fail before dispatch.
+- A result with retryable challenges includes a `run_id`. The administrator can
+  resend just one failed or detector-rejected challenge with
+  `POST /api/modeltrace-probe/retry` and `{group_id, model, run_id, challenge_id}`.
+  Retry state is kept in bounded process memory for up to 30 minutes after the
+  latest result. If the state is gone or the original route or credential
+  changed, start a new detection.
 - One schedulable credential is selected for the run. Challenges are executed
   through the ordinary executor and protocol conversion path using that
   credential; challenge prompts and responses are not sent to the browser's
@@ -73,6 +81,20 @@ upstream model's identity.
   ID/log entry, including failed executions. A failure before dispatch has no
   request log. Request-log persistence remains best effort and does not replace
   the API result.
+- A manual retry sends the original challenge prompt once using the same route
+  and credential, with a newly frozen price table and its own request log. The
+  latest attempt replaces just that challenge in the result and updates the
+  attribution; the other challenges and the context check are preserved.
+- The run also sends one standalone, user-only context check in parallel on the
+  same route and credential. Its request is logged and priced as `modeltrace`,
+  but its response never enters the fingerprint analysis. The prompt text is
+  six tokens in both `o200k_base` and `cl100k_base`. `context_check` compares
+  this estimate with the provider's total reported input tokens, including
+  cache reads/writes and excluding output. A positive difference greater than
+  24 tokens flags suspected extra context. Failed requests or requests without
+  complete, usable input usage return `unavailable` independently of attribution.
+  The threshold allows for routine framing and tokenizer differences; larger
+  legitimate overhead can still trigger it, and falsified usage can hide changes.
 - ModelTrace challenges request low reasoning effort by default; ordinary
   probes and user requests do not inherit this setting. Responses uses
   `reasoning.effort` and Chat uses `reasoning_effort`. Responses consults SDK
@@ -113,7 +135,9 @@ upstream model's identity.
   in a private temporary directory for SDK loading, then removes the directory.
   `THIRD_PARTY_NOTICES.md` identifies the SDK and matching data snapshot.
 - The management UI displays candidates, challenge status, duration, status
-  code, and links to individual request logs. It identifies closed-set
+  code, and links to individual request logs. It reports context fidelity
+  separately with the expected and reported input counts, delta, and log link.
+  It identifies closed-set
   attribution limitations and keeps executed challenge details visible when
   analysis fails.
 

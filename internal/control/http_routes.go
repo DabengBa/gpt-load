@@ -133,6 +133,7 @@ func (s *Server) HTTPModule() httproute.Module {
 				"/modeltrace-probe",
 				s.handleModelTraceProbe,
 			),
+			controlRoute("control.modeltrace-probe.retry", http.MethodPost, "/modeltrace-probe/retry", s.handleModelTraceRetry),
 			controlRoute(
 				"control.model-route-schedule.index",
 				http.MethodGet,

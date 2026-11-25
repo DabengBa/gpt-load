@@ -104,21 +104,18 @@ When changing raw-capture lifecycle behavior, verify wire field names against re
 Read the installed `aislop` command help before selecting a change-scope flag.
 
 ### Details
-The repository's `aislop` version is `0.20.0`. Its supported native change
-scope is `--changes --base <ref>` for both `aislop scan` and `aislop ci`.
-Selecting the range from the current help output avoids assuming a flag name
-or comparison semantics that may have changed between tool versions. When the
-branch HEAD equals the target base and the PR changes are still only in the
-worktree, temporarily staging those tracked changes ensures the Git-based
-`--changes --base` scope includes them; reset the index immediately afterward.
-This was validated against the `dev` integration base with both commands.
+Both `aislop scan` and `aislop ci` document `--changes --base <ref>`. The
+`0.20.0` check used temporary staging, but `0.22.1` `scan` includes unstaged and
+untracked changes even when HEAD equals the base. The ModelTrace preflight
+confirmed this with `--explain-scope` and an empty index.
 
 ### Suggested Action
 Before a future `aislop` change review, run `aislop --version`,
 `aislop scan --help`, and `aislop ci --help`; then use the installed command's
 documented scope flags and record the base ref in the review result. If the
-changes are unstaged and the branch has no commit delta from the base, stage
-only the intended files for the scan and restore the original index state.
+changes are unstaged, compare `scan --explain-scope` with the worktree before
+touching the index. Use the scope explanation, not the JSON summary's file
+count, to report diff coverage.
 
 ### Metadata
 - Source: user_feedback
@@ -133,9 +130,9 @@ only the intended files for the scan and restore the original index state.
 ### Context Maintenance
 - Decay-Type: dependency
 - Decay-Rate: fast (the installed `aislop` version or supported flags may change)
-- Authority: `aislop 0.20.0` `--help` output; Owner: unknown
+- Authority: installed `aislop` command help and scope output; Owner: unknown
 - Revalidation: run `aislop --version`, `aislop scan --help`, and `aislop ci --help` before each use; if the version or scope flags differ, update this learning and use the newly documented form; if the command is unavailable, report the missing tool and do not infer its flags
-- Validation: verified; Last-Validated: 2026-11-07; Evidence: `aislop scan --changes --base dev --json .` and `aislop ci --changes --base dev --format json .` completed successfully after temporarily staging the 7 intended worktree files; the index was reset afterward
+- Validation: verified; Last-Validated: 2026-11-25; Evidence: `aislop 0.22.1 scan --changes --base origin/dev --explain-scope` reported 13 production, 6 test, 3 declaration, and 1 excluded files with no staged changes
 - Disposition: retain; Application: applied
 
 ---

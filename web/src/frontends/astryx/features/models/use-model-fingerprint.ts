@@ -1,6 +1,10 @@
 import { useState } from 'react'
 
-import { fingerprintRunFailure, runModelFingerprint } from '@shared/control/resources/fingerprint'
+import {
+  fingerprintRunFailure,
+  retryModelFingerprintChallenge,
+  runModelFingerprint,
+} from '@shared/control/resources/fingerprint'
 import {
   createFingerprintRunner,
   initialFingerprintRunState,
@@ -21,10 +25,11 @@ export function useModelFingerprint() {
   const [runner] = useState(() =>
     createFingerprintRunner({
       run: (target) => runModelFingerprint(apiClient, target),
+      retry: (request) => retryModelFingerprintChallenge(apiClient, request),
       describeFailure: fingerprintRunFailure,
       onChange: setRun,
     }),
   )
 
-  return { run, start: runner.start, close: runner.close }
+  return { run, start: runner.start, retryChallenge: runner.retryChallenge, close: runner.close }
 }

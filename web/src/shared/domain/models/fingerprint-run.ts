@@ -1,5 +1,6 @@
 import type {
   FingerprintRunFailure,
+  ModelFingerprintChallengeRetryDto,
   ModelFingerprintResultDto,
   ModelFingerprintTargetDto,
 } from '@shared/control/resources/fingerprint'
@@ -9,7 +10,8 @@ import type {
  * because the operation is an explicit per-model diagnostic, not a batch: a
  * second click while running must not queue another paid upstream execution.
  */
-export type FingerprintRunStatus = 'idle' | 'running' | 'failed' | 'succeeded'
+export type FingerprintRunStatus =
+  'idle' | 'running' | 'failed' | 'succeeded' | 'retrying' | 'retry_failed'
 
 export interface FingerprintRunState {
   readonly status: FingerprintRunStatus
@@ -49,10 +51,35 @@ export function failFingerprintRun(
   return { status: 'failed', target: state.target, result: null, failure }
 }
 
+// A challenge retry is a second, independent request against an existing
+// successful run. The prior result stays visible until the replacement lands
+// so one bad challenge never erases the rest of the attribution.
+export function startChallengeRetry(state: FingerprintRunState): FingerprintRunState {
+  if (state.result === null || state.result.run_id === null) return state
+  if (state.status !== 'succeeded' && state.status !== 'retry_failed') return state
+  return { ...state, status: 'retrying', failure: null }
+}
+
+export function completeChallengeRetry(
+  state: FingerprintRunState,
+  result: ModelFingerprintResultDto,
+): FingerprintRunState {
+  if (state.status !== 'retrying') return state
+  return { ...state, status: 'succeeded', result, failure: null }
+}
+
+export function failChallengeRetry(
+  state: FingerprintRunState,
+  failure: FingerprintRunFailure,
+): FingerprintRunState {
+  if (state.status !== 'retrying') return state
+  return { ...state, status: 'retry_failed', failure }
+}
+
 // Closing is blocked while the request is in flight: the upstream execution
 // already happened and its result (or failure) must stay observable.
 export function closeFingerprintRun(state: FingerprintRunState): FingerprintRunState {
-  if (state.status === 'running') return state
+  if (state.status === 'running' || state.status === 'retrying') return state
   return initialFingerprintRunState
 }
 
@@ -63,11 +90,13 @@ export function isFingerprintDialogOpen(state: FingerprintRunState): boolean {
 export interface FingerprintRunner {
   getState(): FingerprintRunState
   start(target: ModelFingerprintTargetDto): void
+  retryChallenge(request: ModelFingerprintChallengeRetryDto): void
   close(): void
 }
 
 export interface FingerprintRunnerDeps {
   run(target: ModelFingerprintTargetDto): Promise<ModelFingerprintResultDto>
+  retry?(request: ModelFingerprintChallengeRetryDto): Promise<ModelFingerprintResultDto>
   describeFailure(cause: unknown): FingerprintRunFailure
   onChange(state: FingerprintRunState): void
 }
@@ -103,10 +132,29 @@ export function createFingerprintRunner(deps: FingerprintRunnerDeps): Fingerprin
     )
   }
 
+  function retryChallenge(request: ModelFingerprintChallengeRetryDto): void {
+    if (inFlight || deps.retry === undefined) return
+    if (state.result === null || state.result.run_id !== request.run_id) return
+    const next = startChallengeRetry(state)
+    if (next === state) return
+    inFlight = true
+    update(next)
+    void deps.retry(request).then(
+      (result) => {
+        inFlight = false
+        update(completeChallengeRetry(state, result))
+      },
+      (cause: unknown) => {
+        inFlight = false
+        update(failChallengeRetry(state, deps.describeFailure(cause)))
+      },
+    )
+  }
+
   function close(): void {
     if (inFlight) return
     update(closeFingerprintRun(state))
   }
 
-  return { getState: () => state, start, close }
+  return { getState: () => state, start, retryChallenge, close }
 }

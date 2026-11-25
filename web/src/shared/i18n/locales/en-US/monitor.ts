@@ -133,12 +133,17 @@ export default {
         not_model: 'Response does not resemble a model reply',
       },
       candidatesTitle: 'Candidates',
+      rankingInfo: 'About these rankings',
+      rankingScoreTitle: 'Score',
+      probabilityAndScore: 'Probability / Score',
+      probabilityUnavailable: 'Probability unavailable',
       rankingScore: 'Ranking score: {score}',
       evidence: 'Attribution used {used}/{total} usable outputs',
       challenge: {
         title: 'Challenge runs',
         succeeded: 'Succeeded',
         failed: 'Failed',
+        retry: 'Retry challenge',
         log: 'View log',
         noLog: 'No request log was recorded',
         summary: '{succeeded}/{total} challenges succeeded',
@@ -165,6 +170,20 @@ export default {
         probability: 'Probability',
         detectedAt: 'Detected at',
         logId: 'Request ID',
+      },
+      contextCheck: {
+        title: 'Context fidelity',
+
+        status: {
+          no_anomaly: 'No anomaly',
+          suspected_injection: 'Suspected extra context',
+          unavailable: 'Unavailable',
+        },
+        fields: {
+          expectedInputTokens: 'Expected input tokens',
+          reportedInputTokens: 'Reported input tokens',
+          delta: 'Delta',
+        },
       },
     },
     usage: {
