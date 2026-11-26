@@ -2,8 +2,14 @@
 description: Keep provider-site access and announcement snapshots outside the legacy groups table
 kind: adr
 topic: group-site-information-storage
-status: accepted
+id: ADR-0004
+status: active
+supersedes: null
+created_at: 2026-11-07
 date: 2026-11-07
+affects_symbols:
+  - internal/storage/models/site_info.go#GroupSiteConfig
+  - internal/storage/models/site_info.go#SiteAnnouncement
 ---
 
 # ADR-0004: Store provider site information in independent tables

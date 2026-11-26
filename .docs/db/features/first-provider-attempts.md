@@ -66,6 +66,6 @@ attempts for that request.
   behavior is outside this feature.
 - HTTP failures, credential refresh, buffered streaming, and provider rotation
   remain implementation behavior documented by
-  [Provider feedback](../../tech/provider-feedback.md).
+  [Provider retry decision](../../adr/0006-retry-for-usable-upstream-answer.md).
 - The feature does not define provider APIs, credentials, model selection,
   request-log fields, or transport retry mechanics.

@@ -9,7 +9,7 @@ name: Usage request success history
 
 `feature.usage-request-success-history` owns the user-visible history of
 request outcomes on each monitor usage breakdown row. Aggregation and API
-projection rules belong to [Usage Accounting](../../tech/usage-accounting.md).
+projection rules are pinned by the implementation and its tests.
 
 ## Purpose
 

@@ -32,6 +32,25 @@ The selected generation model can open
 [Actual Request Testing](feature.realistic-probe) with its protocol and external
 model preserved.
 
+## Shared Upstream Pricing
+
+The candidate price entry opens upstream pricing. Administrators can edit or
+reset base prices, tiered prices and existing Fast-mode prices. These prices
+are shared by channel and upstream model; before saving, the page shows the
+related upstreams and affected groups. Directory synchronization affects the
+global model catalog and automatic pricing, and automatic pricing remains
+available.
+
+Access-key users see only the models, protocols and reference prices within
+their authorization. Reference prices use USD per million tokens for cost
+estimation and are not a supplier invoice.
+
+## Ownership Boundaries
+
+The standalone `/models` page is removed. Group details own each group's model
+rows and aliases; the Dispatch Center owns cross-group scheduling and shared
+pricing.
+
 ## Reading Candidate Rows
 
 - Saved scheduling eligibility is separate from entry health: a healthy entry

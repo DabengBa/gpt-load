@@ -8,8 +8,8 @@ name: Usage reporting by request model
 ## ID Explanation
 
 `feature.usage-request-model` owns the request-model dimension and filter in
-the usage report. Aggregation and historical-data rules belong to
-[Usage Accounting](../../tech/usage-accounting.md).
+the usage report. Aggregation and historical-data rules are pinned by the
+implementation and its tests.
 
 ## Purpose
 

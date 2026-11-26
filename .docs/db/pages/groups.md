@@ -58,6 +58,21 @@ This differs from OpenAI Compatible, which expects the complete API prefix.
 See the [multi-protocol channel contract](../../tech/multi-protocol-channel.md)
 for its supported operations and probing boundary.
 
+## One Upstream Credential per Group
+
+A group owns at most one upstream credential. Deleting it preserves the group
+but leaves the group unable to serve requests until another credential is
+configured. An occupied group rejects a second credential even when its API key
+is identical. Credential IDs remain stable references in request logs and
+billing, while cross-group health counts and scheduling continue to aggregate
+multiple groups.
+
+Multiple text lines, including duplicate lines, are invalid; one structured JSON
+credential may span lines. Cloud providers retain structured API credentials,
+and external CLIProxyAPI uses its gateway API key. Plural collection routes,
+batch deletion, download-all and multi-value import bodies have no compatibility
+aliases.
+
 ## Reading Site Information
 
 - A missing balance or ratio means no usable value is available; it is not a

@@ -1,99 +1,37 @@
-# 贡献指南 / Contributing
+# Contributing
 
-感谢你愿意为 GPT-Load 出一份力。本文只覆盖人类贡献者需要知道的部分；仓库内的 `AGENTS.md` / `CLAUDE.md` 是给 coding agent 的详细工程约定，不需要通读。
+Thanks for your interest in GPT-Load.
 
-Thanks for helping improve GPT-Load. This document covers what a human contributor needs. The `AGENTS.md` / `CLAUDE.md` files in the repository are detailed engineering rules for coding agents — you do not need to read them.
+## Before you start
 
-## 开始之前 / Before you start
+- **Security issues**: do not open a public issue. Follow the reporting guidance in [SECURITY.md](SECURITY.md).
+- **Usage questions**: check the [official docs](https://www.gpt-load.com/docs) and the Telegram group linked from [README.md](README.md#project-support).
+- **Large changes**: open an issue first to discuss the approach before investing in a pull request.
 
-- **安全漏洞不要提 issue**，请使用 [私有漏洞报告](https://github.com/tbphp/gpt-load/security/advisories/new)，详见 [SECURITY.md](SECURITY.md)。
-- 使用类问题请先查阅[官方文档](https://www.gpt-load.com/docs)或到 [Telegram 群](https://t.me/+GHpy5SwEllg3MTUx)交流，不要开 issue。
-- 较大的改动请先开 issue 讨论方向，避免完成后才发现方案不合适。
+## Product boundaries
 
-- **Never open a public issue for a vulnerability** — use [private vulnerability reporting](https://github.com/tbphp/gpt-load/security/advisories/new); see [SECURITY.md](SECURITY.md).
-- For usage questions, check the [official docs](https://www.gpt-load.com/docs) or the [Telegram group](https://t.me/+GHpy5SwEllg3MTUx) first.
-- For substantial changes, open an issue to discuss the approach before writing code.
+- This repository keeps the standard API and cloud-credential model plus external CLIProxyAPI gateways. Do not reintroduce built-in subscription authorization, OAuth account observation, or embedded CPA execution. Codex / Claude Code are downstream clients, not upstream subscription channels.
+- Breaking storage changes have no in-place migration: the converter path (`gpt-load convert-legacy-db`, offline only) or a fresh database are the only supported upgrade routes. Converter changes must cover the retained/dropped table lists, refusal paths, and a post-conversion startup test. Tests must use temporary databases and never touch a live deployment database. A startup refusal does not promise zero SQLite/WAL side effects.
 
-## 版本线 / Release lines
+## Development
 
-`2.x` 与 `1.x` 是两套不兼容的实现，数据不互通。
+Build, test, lint, and governance commands are owned by [AGENTS.md](AGENTS.md). Toolchain versions are owned by [`go.mod`](go.mod) and the `engines` field of [`web/package.json`](web/package.json). In short: `make dev` runs the app, `make build` builds, `make test` runs Go tests, `make check` runs the deployment regression plus frontend dependency checks.
 
-- **2.x 开发基于 `main` 分支**，PR 也提交到 `main`。
-- `1.x` 处于维护状态，只接受安全和严重缺陷修复。
+## 参与贡献
 
-`2.x` and `1.x` are incompatible implementations and do not share data. Base 2.x work on the **`main` branch** and target your PR at `main`. The `1.x` line is in maintenance and only takes security and critical bug fixes.
+感谢你对 GPT-Load 的兴趣。
 
-## 当前产品边界 / Current scope
+## 开始之前
 
-仅保留标准 API、云凭据和 external CLIProxyAPI 网关；不重新引入内置订阅、订阅 OAuth、账号观察或 CPA 依赖。Codex/Claude Code 下游客户端配置保留。破坏性存储变更不提供原地迁移：旧库只能停机后用 `gpt-load convert-legacy-db` 离线转换，或改用全新数据库；含退役订阅结构或 migration `0003` 的库会拒绝转换/启动。转换器改动必须覆盖保留与丢弃表清单、拒绝路径，以及转换后的启动测试。测试必须使用临时数据库，不连接业务数据库；启动拒绝不承诺 SQLite 文件/WAL 零副作用。
+- **安全问题**：不要提交公开 issue，按 [SECURITY.md](SECURITY.md) 的报告指引操作。
+- **使用问题**：查阅[官方文档](https://www.gpt-load.com/docs)及 [README.md](README.md#project-support) 中的 Telegram 群。
+- **较大改动**：先开 issue 讨论方案，再投入 pull request。
 
-Retain standard APIs, cloud credentials and the external CLIProxyAPI gateway, not embedded subscriptions/OAuth/account observation/CPA. Preserve downstream Codex/Claude Code setup. This breaking schema has no in-place migration: a legacy database is either converted offline with `gpt-load convert-legacy-db` after the old instance is stopped, or replaced with a fresh database; databases with retired subscription structures or migration `0003` are refused. Converter changes must cover the retained/dropped table lists, the refusal paths, and a startup test of the converted database. Use test-owned temporary databases, never business data.
+## 产品边界
 
-## 本地开发 / Local development
+- 本仓库保留标准 API 与云凭据模型及外部 CLIProxyAPI 网关。不要重新引入内置订阅授权、OAuth 账号观察或嵌入式 CPA 执行。Codex / Claude Code 是下游客户端，不是上游订阅渠道。
+- 破坏性存储变更没有原地迁移：仅支持离线转换（`gpt-load convert-legacy-db`）或全新数据库。转换器改动必须覆盖保留/丢弃表清单、拒绝路径与转换后启动测试。测试必须使用临时数据库，不得连接业务部署库。启动拒绝不承诺 SQLite/WAL 零副作用。
 
-需要 Go（版本以 `go.mod` 为准）和 Node.js + pnpm（通过 corepack 调用）。
+## 本地开发
 
-Requires Go (see `go.mod`) and Node.js with pnpm (invoked through corepack).
-
-```bash
-make dev     # 构建管理 UI 并以 race 检测运行 / build the web UI and run with race detection
-make build   # 构建 UI 与二进制 / build the UI and the binary
-make test    # 运行 Go 单元测试 / run Go unit tests
-make check   # 完整验收门禁 / the full acceptance gate
-```
-
-`make check` 覆盖 gofmt、`go mod tidy -diff`、`go vet`、前端 lint / format / build、Go 构建与全量单元测试。
-
-`make check` covers gofmt, `go mod tidy -diff`, `go vet`, web lint / format / build, the Go build, and the full unit test suite.
-
-
-## 提交 PR / Submitting a pull request
-
-1. 从 `main` 切出分支，保持改动聚焦，不要夹带无关重构或格式化。
-2. 修复缺陷或改变行为时，优先补一个能复现问题的测试。
-3. 提交前跑一次 `make check`；无法运行时在 PR 里说明原因和未验证范围。
-4. 按 `.github/pull_request_template.md` 填写，如实勾选自查清单。
-5. 改动涉及用户可见能力时，**两份 README（`README.md`、`README_CN.md`）必须同步更新**。
-
-1. Branch from `main`, keep the change focused, and avoid unrelated refactors or reformatting.
-2. For bug fixes and behavior changes, add a test that reproduces the problem first.
-3. Run `make check` before submitting; if you cannot, say why and what remains unverified.
-4. Fill in `.github/pull_request_template.md` honestly, including the checklist.
-5. When a change affects user-visible capabilities, **both READMEs (`README.md`, `README_CN.md`) must be updated together**.
-
-## Commit 规范 / Commit convention
-
-格式为 `<type>(scope): <summary>`，`scope` 可选。常用 type：`feat`、`fix`、`refactor`、`docs`、`test`、`chore`。
-
-Format: `<type>(scope): <summary>`, with an optional scope. Common types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`.
-
-```text
-fix(credentials): 保留 API 凭据失败诊断
-feat(gateway): 支持 OpenAI Embeddings API
-```
-
-## 代码风格 / Code style
-
-- UTF-8、LF 换行、文件末尾保留换行；`.go` 与 `Makefile` 用 Tab，其余用 2 空格。权威配置见 `.editorconfig`。
-- Go 使用 gofmt 格式；import 分组顺序为 stdlib → 第三方 → `gpt-load/internal/...`。
-- 代码标识符使用英文，注释优先使用简体中文。
-- 对外错误消息走 `internal/platform/i18n`，不要在 handler 里硬编码用户可见文案。
-
-- UTF-8, LF endings, trailing newline; Tabs in `.go` and `Makefile`, 2 spaces elsewhere. `.editorconfig` is authoritative.
-- Go code is gofmt-formatted; imports are grouped stdlib → third-party → `gpt-load/internal/...`.
-- Identifiers are in English; comments are written in Simplified Chinese.
-- User-facing error messages go through `internal/platform/i18n`, never hardcoded in handlers.
-
-## 依赖与安全 / Dependencies and security
-
-- **新增依赖需要先在 issue 或 PR 中说明理由**，并注意其许可证是否兼容。
-- 提交、日志、测试数据和截图中不得包含 `AUTH_KEY`、`ENCRYPTION_KEY`、上游密钥或任何真实凭据。
-
-- **New dependencies need justification** in an issue or PR, along with license compatibility.
-- Never include `AUTH_KEY`, `ENCRYPTION_KEY`, upstream keys, or any real credential in commits, logs, fixtures, or screenshots.
-
-## 行为准则 / Code of conduct
-
-参与本项目即表示你同意遵守 [行为准则](CODE_OF_CONDUCT.md)。
-
-By participating, you agree to abide by the [Code of Conduct](CODE_OF_CONDUCT.md).
+构建、测试、lint 与治理命令由 [AGENTS.md](AGENTS.md) 拥有。工具链版本由 [`go.mod`](go.mod) 与 [`web/package.json`](web/package.json) 的 `engines` 字段拥有。简言之：`make dev` 运行应用，`make build` 构建，`make test` 跑 Go 测试，`make check` 跑部署回归加前端依赖检查。

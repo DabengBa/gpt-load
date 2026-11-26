@@ -2,15 +2,21 @@
 description: Astryx cutover decision — ship Phase 5 and Phase 6 together and give up the one-release cookie fallback window
 kind: adr
 topic: astryx-migration
-status: accepted
+id: ADR-0003
+status: active
+supersedes: null
+created_at: 2026-09-30
 date: 2026-09-30
+affects_symbols:
+  - internal/webui/server.go#serveIndex
+  - internal/webui/server.go#serveNotFoundIndex
 ---
 
 # ADR-0003: Combine cutover and deletion into one delivery, leaving a zero-length cookie fallback window
 
 ## Context
 
-The migration plan (`.docs/tech/astryx-migration-plan.md`) originally split the
+The migration plan originally split the
 close-out into two phases one release apart:
 
 - Phase 5: flip the default document to Astryx while the

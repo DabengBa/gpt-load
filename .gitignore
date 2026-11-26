@@ -70,3 +70,7 @@ web/test-results/
 
 # Worktrees
 .worktrees/
+
+# Temporary governance migration workspace
+.tmp/
+**/.tmp/

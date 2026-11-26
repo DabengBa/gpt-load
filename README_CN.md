@@ -4,21 +4,17 @@
 
 # GPT-Load
 
-**面向多渠道、多凭据场景的自托管 AI 网关**
+**自托管 AI 网关，面向多渠道、多凭据场景**
 
-把 API Key、流量调度、故障处理、请求日志与用量统计，收进同一个入口。
+API 密钥、流量调度、故障处理、请求日志与用量统计，全部收在单一入口之后。
 
 [English](README.md) · 中文 | [官方网站](https://www.gpt-load.com)
 
-> 本仓库是 **[DabengBa/gpt-load](https://github.com/DabengBa/gpt-load)**。下文保留的 `tbphp/gpt-load` 链接仅指向上游官方发布物或容器产物，不代表本仓库归属。
+> 本仓库是 **[DabengBa/gpt-load](https://github.com/DabengBa/gpt-load)**。下文保留的 `tbphp/gpt-load` 链接仅指上游官方发布物或容器产物，不是本仓库。
 
 [![Release](https://img.shields.io/github/v/tag/tbphp/gpt-load?filter=v2.*)](https://github.com/tbphp/gpt-load/releases)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Ftbphp%2Fgpt--load%3A2-2496ED?logo=docker&logoColor=white)](https://github.com/tbphp/gpt-load/pkgs/container/gpt-load)
-[![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](go.mod)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-
-<a href="https://trendshift.io/repositories/14880" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14880" alt="tbphp/gpt-load | Trendshift" width="220" height="48"/></a>
-<a href="https://hellogithub.com/repository/tbphp/gpt-load" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=554dc4c46eb14092b9b0c56f1eb9021c&claim_uid=Qlh8vzrWJ0HCneG" alt="Featured｜HelloGitHub" width="220" height="47"/></a>
 
 </div>
 
@@ -35,39 +31,36 @@
 <tbody>
 <tr>
 <td width="180"><a href="https://www.axisnow.io/zh"><img src="./screenshot/axisnow.jpg" alt="AxisNow" width="150"></a></td>
-<td>保护并加速网站与 API，<strong>兼顾中国大陆</strong>及全球的访问体验，并通过客户端 SDK，将加速与安全能力延伸至原生/移动 App — <strong>自建私有部署 CDN｜订阅式高防 CDN｜自主可控、灵活组合的 CDN 网络。</strong></td>
+<td>保护并加速网站与 API，<strong>服务中国大陆及全球用户</strong>，并通过客户端 SDK 将加速与安全能力延伸到原生/移动应用——<strong>自建私有部署 CDN | 订阅制高防 CDN | 可自主掌控、灵活组合的 CDN 网络。</strong></td>
 </tr>
 <tr>
 <td width="180"><a href="https://go.apimart.ai/gh-gpt-load"><img src="./screenshot/apimart.png" alt="APIMart" width="150"></a></td>
-<td>感谢 APIMart 赞助了本项目！APIMart 是专注 AI 图片/视频生成的低价 API 平台，GPT-Image-2 低至 $0.006/张，1 美元可出图 160+ 张。图片、视频一套异步 API 通吃，提交任务拿 ID、回调取结果，跑批万张不超时、换模型不改代码。按量付费、无月费，通过<a href="https://go.apimart.ai/gh-gpt-load">此注册链接</a>注册即可开用。</td>
+<td>感谢 APIMart 赞助本项目！APIMart 是面向 AI 图像与视频生成的低成本 API 平台——GPT-Image-2 每张 $0.006 起，1 美元可生成 160+ 张。一个异步 API 同时覆盖图像与视频：提交任务拿 ID，轮询或回调取结果。批量数万张图像不超时，换模型不改代码。按量付费无月费——<a href="https://go.apimart.ai/gh-gpt-load">点此注册</a>开始使用。</td>
 </tr>
 </tbody>
 </table>
 
 </details>
 
-## 为什么选择 GPT-Load
+## 为什么选 GPT-Load
 
-应用只需要配置一个地址和一个 AccessKey。后面的服务商、账号、凭据、模型与路由策略，全部在管理界面里完成。
+你的应用只需要一个 base URL 和一个 AccessKey。上游服务、账号、凭据、模型和路由策略全部在管理界面配置。
 
-<img src="./screenshot/architecture-overview.png" alt="GPT-Load 统一接入与上游分流架构图" width="860">
+<img src="./screenshot/architecture-overview.png" alt="GPT-Load 统一接入与上游路由架构" width="860">
 
-- **统一入口，保留原生协议** — 官方 API、云平台、模型服务和兼容中转统一管理；客户端继续使用 OpenAI、Anthropic 或 Gemini 原生接口，无需改造代码。
-- **统一管理 API 凭据** — 标准 API 与云平台凭据共享调度、健康、请求日志和通讯捕获体系。
-- **内置调度与故障隔离** — 多凭据调度、自动权重、重试、冷却、黑名单与会话亲和，降低单个凭据过载或失效的影响。
-- **独立调度中心** — 管理员可打开 `/schedule`，跨分组查看同一对外模型的候选，统一编辑权重和优先级，查看运行态，恢复冷却或黑名单条目，并执行单条或批量测活。
-- **可观测、易部署、数据自持** — 提供健康、路由、日志、用量与成本估算，日志列表直接显示缓存命中率；单个 Go 二进制内嵌管理界面，支持 SQLite 和本地凭据加密。
+- **一个网关，原生协议** —— 把官方 API、云平台、模型服务与兼容中转统一管理，客户端继续使用 OpenAI、Anthropic 或 Gemini 原生接口。
+- **API 凭据管理** —— 标准 API 凭据与云凭据共享调度、健康处理、请求日志与通信采集。
+- **内置调度与故障隔离** —— 多凭据调度、自动加权、重试、冷却、拉黑与会话亲和，降低过载或故障凭据的影响。
+- **专属调度工作台** —— 管理员可打开 `/schedule` 跨分组对比外部模型的候选上游、批量编辑权重与优先级、查看运行状态、恢复冷却/拉黑条目，并执行单个或批量测活。
+- **可观测、自托管、部署简单** —— 在内嵌界面查看健康、路由、带内联缓存命中率的日志、用量与费用估算，后端为 SQLite 并本地加密凭据。
 
 ## 快速开始
 
 > [!WARNING]
-> 如果你正在使用 1.x，请先阅读[从 1.x 切换](#从-1x-切换)。2.0 不能打开、导入或原地迁移 1.x 数据。
+> 如果你在用 1.x，请先读[从 1.x 迁移](#从-1x-迁移)。2.0 无法原地打开、导入或迁移 1.x 数据。
 
 > [!WARNING]
-> **破坏性变更：上一版本写出的数据库必须转换或替换。** 内置 Codex、Claude、Antigravity、Grok 订阅及嵌入式 CPA 已删除，包括 OAuth、订阅凭据文件导入、刷新和账号/额度观察。本构建无法原地打开含已退役订阅结构或 migration `0003` 的旧库，会直接拒绝启动。受支持的路径有两条：停机后用 `gpt-load convert-legacy-db --source <legacy.db> --target <new.db>` 离线转换（保留分组、API 凭据、访问密钥与限额用量，丢弃请求日志与用量历史），或使用全新数据库手工重建。详见 [旧库离线转换](.docs/tech/legacy-db-conversion.md)。没有原地 migration、自动删除或兼容层；请保留旧部署和备份，不要让此构建连接业务数据库。启动拒绝不保证 SQLite 文件/WAL 零副作用。标准 API 与 external CLIProxyAPI 网关渠道仍受支持。
-
-> [!NOTE]
-> 日语界面和日文 README 已移除。升级后，已保存的日语界面偏好会回退到浏览器语言列表中首个支持的语言（中文或英文）；没有匹配时使用英文。服务端文案语言协商独立进行，未选出支持的语言时默认中文。
+> **破坏性变更：上一版本写入的数据库必须转换或替换。** 本构建无法原地打开含退役订阅结构的旧 schema，会拒绝启动。请在停止后离线转换旧库：`gpt-load convert-legacy-db --source <legacy.db> --target <new.db>`（保留分组、API 凭据、访问密钥与配额状态，丢弃请求日志与用量历史），或使用全新数据库启动。没有原地迁移、自动删除或兼容层。保留旧部署与备份。完整离线流程见 [`.agents/skills/gpt-load-operations/references/legacy-db-conversion.md`](.agents/skills/gpt-load-operations/references/legacy-db-conversion.md)。
 
 ### 1. 启动服务
 
@@ -81,98 +74,51 @@ cp .env.example .env
 docker compose up -d
 ```
 
-确认服务已启动：
+确认服务已启动并读取生成的管理密钥：
 
 ```bash
 curl --fail http://127.0.0.1:3001/health
-```
-
-首次启动会自动生成管理密钥，读取并妥善保存：
-
-```bash
 docker compose exec gpt-load sh -c 'cat /app/data/auth.key'
 ```
 
-打开 <http://127.0.0.1:3001>，用该密钥登录控制台。
+打开 <http://127.0.0.1:3001> 用该密钥登录控制台。也可以在启动前于 `.env` 显式设置 `AUTH_KEY`。默认服务只监听回环地址。
 
-> 也可以在启动前通过 `.env` 里的 `AUTH_KEY` 显式指定管理密钥。默认只监听本机地址，不会直接暴露到公网。
+### 2. 初始配置
 
-### 2. 完成首次配置
+1. **添加渠道** —— 选择一个上游服务并添加一个或多个 API 密钥。
+2. **创建分组** —— 选定渠道，然后配置可用模型与运行策略。
+3. **创建 AccessKey** —— 设置它可使用的分组与客户端协议，把生成的 AccessKey 交给你的应用。
 
-首次配置只需三步：
+### 流式响应
 
-1. **添加渠道** — 选择上游服务，填入一个或多个 API Key。
-2. **创建 Group** — 选择渠道，配置可用模型与运行策略。
-3. **创建 AccessKey** — 设置允许访问的 Group 与客户端协议，把生成的 AccessKey 交给应用使用。
+OpenAI Chat Completions、OpenAI Responses `create` 与 Anthropic Messages SSE 流采用缓冲交付：上游请求保持流式，但网关先校验完整事件序列与协议终态，再按原顺序一次性释放模型载荷。仅在载荷释放前且为已证实无副作用的失败时允许重试。Gemini 与 OpenAI Images 保持实时透传。交付阈值、限制与错误形状由实现及其测试拥有。
 
-### 流式响应交付
+## 界面截图
 
-OpenAI Chat Completions、OpenAI Responses 的 `create` 和 Anthropic Messages 的 SSE 流**始终使用缓冲交付**：上游仍保持流式请求，但网关会先验证完整事件序列和协议终态，再一次性按原顺序释放模型 payload。只有本地 pre-dispatch 校验通过并确认已 dispatch 后，网关才提交 SSE 响应；本地失败保留原 HTTP 状态，也不会发送 heartbeat。验证期间客户端只收到 `: keep-alive` 注释心跳，默认每 15 秒一次；心跳不代表模型首字节，也不会刷新上游首字节或空闲超时。每个 attempt 默认在内存中暂存 1 MiB，单次响应硬上限 32 MiB，进程总暂存预算 256 MiB；超过内存阈值使用受限临时文件，超限、磁盘失败或读回失败会终止请求，不降级实时透传。
+**分组** —— 一处查看渠道、模型、凭据数量与健康状态
 
-只有尚未释放 payload、已收到上游响应、明确属于连接中断/空闲超时/半帧/协议错误，并且请求被证明无供应商副作用时，才允许按候选预算重试。OpenAI Responses 的存储、continuity、资源引用、供应商工具和未知语义不会重放；符合条件的生成可能被重新执行，因此可能重复计费，不承诺幂等。Responses 的 `completed`、`incomplete`、`failed` 会严格区分；OpenAI Chat 和 Anthropic 的终态及 block 生命周期也必须完整。缓冲请求使用冻结的总 deadline 覆盖候选等待、验证、重试和释放，慢客户端不会永久保活。
+<img src="./screenshot/groups-overview.png" alt="GPT-Load 分组概览" width="860">
 
-Gemini 和 OpenAI Images 是明确的实时例外：它们按原有实时流透传，不进入缓冲验证、释放和重放窗口，也没有缓冲重试。Responses 的其它 `stream:true` operation（`retrieve`、`passthrough`、`input_items`、`compact`、`input_tokens` 等）不支持流式，会在 dispatch 前以 HTTP 400 拒绝。已知协议的不支持 operation 返回 `streaming_operation_unsupported`，未知客户端协议返回 `streaming_protocol_unsupported`，两者都不会静默降级为实时流；此前的协议专用拒绝错误码已删除。
+**AccessKey 只读主页** —— 用 AccessKey 登录后只看自己的分组、模型、请求、用量与费用额度
 
-流式交付没有开关、Group 覆盖、默认值或回滚路径。协议兼容性 smoke 对 Chat/Anthropic 使用 wire 上真实可观察的合并 `error` 场景，对 Responses 分别验证 `completed`、`incomplete`、`failed` 和流内 `error`，不把相同错误字节伪称为不同覆盖。遇到 SDK/代理超时、临时卷空间不足或费用异常时，只能修复代理、容量或超时配置，或升级版本；生产灰度仍需验证反向代理和客户端超时。
+<img src="./screenshot/access-key-home.png" alt="GPT-Load AccessKey 只读主页" width="860">
 
-详细设计与本地官方 SDK smoke 证据见 [`docs/design/buffered-stream.md`](docs/design/buffered-stream.md)。
+**用量与费用** —— 查看请求趋势、缓存命中率、token 分类与费用估算
 
-## 界面预览
+<img src="./screenshot/usage-cost.png" alt="GPT-Load 用量与费用监控" width="860">
 
-**分组总览** — 统一查看渠道、模型、凭据数量与健康状态
+## 适用范围
 
-<img src="./screenshot/groups-overview.png" alt="GPT-Load 分组总览" width="860">
-
-**访问密钥只读首页** — 使用 AccessKey 登录，只查看该密钥自己的分组、模型、请求、用量与费用额度
-
-<img src="./screenshot/access-key-home.png" alt="GPT-Load 访问密钥只读首页" width="860">
-
-**用量与成本** — 查看请求趋势、缓存命中率、Token 分类与成本估算
-
-<img src="./screenshot/usage-cost.png" alt="GPT-Load 用量与成本监控" width="860">
-
-## 支持范围
-
-### 客户端协议
-
-| 协议                    | 主要入口                     |
-| ----------------------- | ---------------------------- |
-| OpenAI Chat Completions | `POST /v1/chat/completions`  |
-| OpenAI Responses        | `/v1/responses` 及其资源路径 |
-| OpenAI Images           | `POST /v1/images/...`        |
-| OpenAI Embeddings       | `POST /v1/embeddings`        |
-| Rerank                  | `POST /v1/rerank`            |
-| Anthropic Messages      | `POST /v1/messages`          |
-| Gemini                  | `/v1beta/models/...`         |
-
-每个渠道会明确声明自己可执行的协议与能力。GPT-Load 在受支持的能力之间做转换，但不是任意协议、任意 JSON 的通用转换器。
-
-如果上游请求在 HTTP 响应提交前超时，网关返回 HTTP `408` 和 OpenAI 兼容的 JSON 错误：`error.message` 为 `Gateway timeout: upstream request timed out`，`error.type` 为 `timeout_error`，`error.code` 为 `upstream_timeout`。Chat Completions 和 Responses 客户端可通过该消息识别超时，并按自身配置的重试策略处理。响应一旦开始发送，就无法更改 HTTP 状态码。
-
-Embeddings 首期只在 OpenAI、OpenRouter 和 OpenAI Compatible API Key 渠道提供原生 OpenAI-compatible Wire，不支持协议互转。未设置协议过滤器的 AccessKey 会按既有语义允许全部已启用协议，升级后也会获得 Embeddings 访问能力；最小权限部署请显式配置协议过滤器。
-
-Rerank 使用独立的 `rerank` 协议，在 OpenAI Compatible、New API、GPT-Load API Key 渠道支持 `POST /v1/rerank`。请求使用 `model`、`query` 和纯文本 `documents` 数组，可传 `top_n`、`return_documents` 等上游参数；不支持流式或协议互转。OpenAI Compatible 的 Base URL 是完整 API 前缀（如 `https://host/v1`），New API / GPT-Load 使用网关根地址；上游必须提供兼容 Rerank 接口。未设置协议过滤器的 AccessKey 也会获得 Rerank 访问能力。仅有 `search_units` 等非 Token 计量时保持未计价，不将其视为 Token 或免费请求。
-
-### 内置渠道
-
-- **官方与云平台**：OpenAI、Anthropic、Gemini、xAI、Azure OpenAI、AWS Bedrock、Google Vertex AI
-- **常用模型服务**：DeepSeek、Moonshot AI、SiliconFlow、Zhipu AI、Alibaba、Volcengine、OpenRouter、Groq
-- **自定义**：OpenAI Compatible（任意兼容中转）
-
-- **网关**：New API、GPT-Load、external CLIProxyAPI、sub2api
-
-Codex 与 Claude Code 仍可作为下游客户端使用，访问密钥页保留客户端配置；这不等于内置订阅授权。external CLIProxyAPI 是由运维方独立管理、通过 Base URL 和 API Key 接入的外部服务，不嵌入 GPT-Load。
+客户端保留 OpenAI、Anthropic 或 Gemini 原生接口。每个渠道只声明自己能执行的协议与能力；GPT-Load 在受支持的能力间转换，但不是通用翻译器。当前渠道目录在管理界面可见，由代码拥有。产品语义见 [`.docs/db/`](.docs/README.md)。
 
 ## 部署与数据
 
-Docker Compose 默认使用应用管理的 SQLite，数据存放在 `gpt-load-data` 具名卷中，包含数据库、`auth.key` 和 `encryption.key`。
-
-请求日志保留、SQLite 状态、停机维护和恢复流程见 [SQLite 运维与恢复文档](docs/sqlite-maintenance.md)。
+Docker Compose 默认使用应用自管理的 SQLite。数据存于 `gpt-load-data` 命名卷，包含数据库、`auth.key` 与 `encryption.key`。
 
 > [!IMPORTANT]
-> `encryption.key` 用于解密渠道凭据。备份或迁移时，数据库和密钥**必须一起保存**；密钥丢失或被替换后，已有加密凭据无法恢复，且当前版本不支持主密钥轮换。
+> `encryption.key` 用于解密渠道凭据。备份或迁移时，数据库与密钥**必须一起保存**。密钥一旦丢失或替换，已加密凭据无法恢复。
 
-常用运维命令：
+常用操作：
 
 ```bash
 docker compose logs -f      # 查看日志
@@ -180,92 +126,41 @@ docker compose pull && docker compose up -d   # 更新到最新 2.x 镜像
 docker compose stop         # 停止服务
 ```
 
-官方 Compose 使用 `ghcr.io/tbphp/gpt-load:2`。GA 前，`2` 跟随已验证的 2.0 Beta 和 RC；GA 后只跟随稳定的 2.x。镜像精确标签会去掉 Git tag 的 `v` 前缀（例如 `2.0.0-beta.25`），`2.0-beta` 则保留为 2.0 Beta 通道；`latest` 继续留在 1.x。
+请求日志保留、SQLite 状态、离线维护与恢复流程见 [`.agents/skills/gpt-load-operations/references/sqlite-maintenance.md`](.agents/skills/gpt-load-operations/references/sqlite-maintenance.md)。
 
 <details>
 <summary>使用原生二进制</summary>
 
-从 [GitHub Releases](https://github.com/tbphp/gpt-load/releases) 下载对应平台的文件，建议先用随附的 `SHA256SUMS` 校验：
-
-```bash
-chmod +x ./gpt-load-linux-amd64
-
-HOST=127.0.0.1 DATA_DIR=./data ./gpt-load-linux-amd64
-```
-
-启动后访问 <http://127.0.0.1:3001>。提供 Linux amd64 与 arm64 两种便携构建。
+从 [upstream GitHub Releases](https://github.com/tbphp/gpt-load/releases)（上游产物）下载对应平台的构建，先对照随附的 `SHA256SUMS` 校验。提供 Linux amd64 与 arm64 的可移植构建。
 
 </details>
 
 ### 环境配置
 
-应用启动时读取当前目录的 `.env`，已有的进程环境变量优先。除特别说明外，修改后需要重启进程或容器；常用配置模板见 [`.env.example`](.env.example)。
+应用启动时读取当前目录的 `.env`；已有进程环境变量优先。配置模板见 [`.env.example`](.env.example)；定义与默认值由代码和该模板拥有。
 
-<details>
-<summary>查看全部环境变量</summary>
+## 生产注意事项
 
-| 变量                            | 默认值                                      | 说明                                                                                                                                                     |
-| ------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HOST`                          | `127.0.0.1`                                 | Native 模式的监听地址，也是 Compose 主端口的默认宿主机发布地址；Compose 容器内部固定监听 `0.0.0.0`。                                    |
-| `PORT`                          | `3001`                                      | HTTP 服务端口，必须为 `1–65535`；Compose 同时用于容器端口、宿主机发布端口和健康检查。                                                                    |
-| `BIND_ADDRESS`                  | 空，继承 `HOST`                             | 仅用于 Compose，单独覆盖主服务端口的宿主机发布地址。                                                                              |
-| `GRACEFUL_SHUTDOWN_TIMEOUT`     | `10`                                        | 收到停止信号后等待请求结束的最长时间，正整数，单位秒。                                                                                                   |
-| `CONTAINER_STOP_GRACE_PERIOD`   | `15s`                                       | Compose 强制停止容器前的等待时间，使用 Docker duration，建议大于 `GRACEFUL_SHUTDOWN_TIMEOUT`。                                                           |
-| `READ_TIMEOUT`                  | `60`                                        | HTTP 请求读取超时，正整数，单位秒。                                                                                                                      |
-| `IDLE_TIMEOUT`                  | `120`                                       | HTTP keep-alive 空闲连接超时，正整数，单位秒。                                                                                                           |
-| `DATA_DIR`                      | `./data`                                    | 托管数据库、`auth.key`、`encryption.key` 和运行状态文件的目录；官方 Compose 固定为 `/app/data`。                                                               |
-| `DATABASE_DSN`                  | 空，使用 `${DATA_DIR}/gpt-load.db`          | 空值使用应用托管的 SQLite；非空值支持 SQLite 路径或 URL，并视为运维方管理的外部数据库。容器内文件路径必须位于已挂载目录。     |
-| `SQLITE_JOURNAL_MODE`           | `wal`                                       | `DATABASE_DSN` 为空时应用托管 SQLite 的 journal mode，可选 `wal`、`delete`、`truncate`、`persist`；启动时会校验实际模式。外部 SQLite 改用 DSN 的 `_pragma` 参数设置。 |
-| `AUTH_KEY`                      | 空，读取或生成 `${DATA_DIR}/auth.key`       | 管理界面和 `/api` 管理接口的 Bearer 密钥，不是数据面 AccessKey。                                                                                         |
-| `ENCRYPTION_KEY`                | 空，读取或生成 `${DATA_DIR}/encryption.key` | 用于加密渠道凭据；更换或丢失后无法解密已有凭据，必须与数据库一起备份。                                                                                   |
-| `HTTP_PROXY`                    | 空                                          | HTTP 上游请求的环境代理。                                                                                                                                |
-| `HTTPS_PROXY`                   | 空                                          | HTTPS 上游请求的环境代理。                                                                                                                               |
-| `NO_PROXY`                      | 空                                          | 逗号分隔的不经过环境代理的主机、域名或 IP。                                                                                                              |
-| `LOG_LEVEL`                     | `info`                                      | 支持 `panic`、`fatal`、`error`、`warn`、`warning`、`info`、`debug`、`trace`；无效值会告警并回退到 `info`。                                               |
-| `LOG_FORMAT`                    | `text`                                      | 支持 `text`、`json`；其他值会导致启动失败。                                                                                                              |
-| `MODELS_DEV_AUTO_SYNC_ENABLED`  | 未设置，初始默认 `true`                     | 未设置时使用管理界面的持久化设置；设置后强制开启或关闭 Models.dev 自动同步，并使管理界面中的同名选项变为只读。                                           |
+- 服务默认只监听 `127.0.0.1`。远程访问请通过受控网络或 TLS 反向代理暴露，并配置 ACL 与防火墙规则。
+- 妥善管理 `AUTH_KEY` 与 `ENCRYPTION_KEY`。切勿把真实密钥提交到仓库、日志、截图或公开 issue。
+- 调试通信采集默认关闭、按需开启；采集的明文可能包含凭据与 Cookie。运行约束与证据边界见 [`.agents/skills/gpt-load-operations/references/debug-capture.md`](.agents/skills/gpt-load-operations/references/debug-capture.md)。
+- 2.0 面向**单应用实例**设计。实例间不共享状态，不支持水平扩展。
+- 用量与费用是基于上游响应的**估算**。用于运维分析与容量规划，不等于供应商账单或财务对账。
 
-环境代理仅在凭据、Group 和全局设置都未指定代理时生效。
-
-</details>
-
-## 生产使用注意事项
-
-- 默认只监听 `127.0.0.1`。需要远程访问时，应通过受控网络或带 TLS 的反向代理暴露，并配置 ACL 与防火墙。
-- 妥善管理 `AUTH_KEY` 与 `ENCRYPTION_KEY`，不要把真实密钥提交到仓库、日志、截图或公开 Issue。
-- 调试通讯捕获默认关闭。设置 `DEBUG_CAPTURE_ENABLED=true` 后，独立捕获存储会将观察到的明文请求和响应 Header、Body（可能含凭据和 Cookie）保存至会话创建后 24 小时到期。Unix 进程运行时异步清理到期行；进程停止或清理反复失败会延迟删除，删除数据库行不等于安全擦除数据库页、备份或已下载 ZIP。捕获详情和 ZIP 下载仅通过管理管理员 API 提供；请相应保护 `AUTH_KEY`、数据库、备份和导出的 ZIP 文件。捕获边界是 Gateway 和 Bifrost HTTP 集成实际观察到的应用层数据，不代表 TLS/socket wire、transport 已移除的 HTTP transfer framing、observer contract 未暴露的 HTTP trailers，或从未被观察到的数据。
-- 2.0 按**单应用实例**设计，多个实例之间不共享状态，不支持直接横向扩容。
-- 用量与成本是基于上游返回数据的**估算**，用于运行分析和资源评估，不等同于服务商账单或财务对账结果。
-- HTTP Responses 的 `previous_response_id` 续接按协议及现有存储能力自动接入：原生 Responses 且声明由上游管理状态的渠道目前包括 `openai`、`gpt_load`、`xai`、`newapi`、`cliproxyapi`、`sub2api`。按 AccessKey 隔离归属，在当前路由允许时固定原凭据，不受亲和开关影响；实际状态可用性由上游决定。无状态及转换响应不登记为持久状态。未知 ID（包括升级前或网关外创建的 ID）直接拒绝；Group 参数覆盖不能改写该字段。
-- Responses `create` 可接受可选顶层字段 `prompt_cache_key` 作为亲和信号。值必须非空、有效 UTF-8、首尾无空白、无控制字符、不超过 256 字节；无效值静默忽略，不阻断请求。有效时显式 key 优先于 prompt-prefix 派生信号（来自 `instructions`/`system`/`developer` 与首个 `user`/`input_text`）。原始 key 与任何派生值均不记入日志或暴露。亲和不扩大合格凭据集，也不覆盖 `previous_response_id` 的独立续接归属。请求日志展示有界的 `affinity_source`、`affinity_state` 及独立的 `continuity_hit`。此绑定不代表严格会话身份、机器绑定或跨实例共享。
-- 亲和绑定持久保存在现有 `system_settings` 表中，每个 `_internal.affinity.binding.<raw-hmac>` 键对应一个目标。热缓存 miss、TTL 到期、LRU 淘汰、capacity 变化或进程重启后，从该 durable store 读穿恢复；恢复的合格绑定仍记为 `hit`。无关分组、条目权重、catalog/Models.dev 更新及 snapshot revision 变化不会丢弃绑定。恢复需要同一数据库与亲和键派生材料，不依赖停机 checkpoint。
-- 绑定目标通过访问密钥、分组、路由要求、条目权重、凭据身份代际、冷却与黑名单等全部硬资格过滤后，必须跨所有合格 priority tier、route mode 和 regular/store-downgraded bucket 首试原供应商/凭据。只有实际且可重试的 provider failure 后，才按既有重试/重放规则切换候选；后续尝试成功后才可迁移绑定。目标被资格过滤排除时不尝试它，其他合格候选可正常服务，但其成功不会删除或覆盖旧 durable row。准备阶段错误和下游失败不算 provider failure。
-- `cache_miss` 表示适用查找路径未找到绑定，亲和启用时包括 durable store 查询；`hit` 包括从持久层恢复的绑定。`cache_unavailable` 表示亲和解析不可用，涵盖本地缓存/配置/键条件及持久查询/解码错误。必需的持久查询失败时 fail-closed，在 provider dispatch 前终止，不继续普通调度。所有合格分组均关闭亲和时跳过持久查询，继续普通调度；仅内存的测试装配保留本地行为。供应商已成功后的持久写入失败会保留热绑定和已交付响应，并记录 `affinity_binding_persist_failed`，不触发新的供应商尝试；该次失败写入不保证在缓存丢失或重启后恢复。
-- 原生 Responses WebSocket 使用同端口 `GET /v1/responses`，按渠道声明的实际能力准入，支持 OpenAI、xAI 及符合原生合同的 external CLIProxyAPI/sub2api、GPT-Load 端点。兼容客户端携带布尔参数 `stream:true/false`，两者均按 WS 事件流返回。每轮独立检查权限、限流、额度与当前路由，并记录用量及成本。同一连接固定上游身份；不回退 HTTP、不缓存或重放聊天历史。
-- `responses_websocket_enabled` 默认开启，分组显式设置优先于全局，未覆盖时继承全局。关闭会立即断开受影响的 WS 连接并中断生成；HTTP/SSE 不受影响。重新开启不会恢复旧连接的临时状态。
-- 完整 `stream_id` 多流与分叉用于 OpenAI 和满足端到端条件的 GPT-Load 级联；其余上述渠道串行执行并明确拒绝命名流。预热实际发送 `generate:false`。其他渠道的持久续接仍取决于存储能力与有效归属。
-- 响应归属保存在内存中，默认保留 30 天，最多 100,000 条，ID 文本合计最多 16 MiB，达到容量时淘汰旧记录。正常停机成功保存 checkpoint 后可在同一数据目录恢复；不保证崩溃恢复或上游历史仍有效。
-- `conversation` 与其他既有资源 ID 不在上述归属路由范围内，仍依赖单凭据或上游跨凭据共享资源。
-
-## 从 1.x 切换
+## 从 1.x 迁移
 
 > [!WARNING]
-> GPT-Load 2.0 是完整重写的新版本，**不能**打开、导入或原地迁移 1.x 数据。
+> GPT-Load 2.0 是完全重写。它**无法**原地打开、导入或迁移 1.x 数据。
 
-部署 2.0 时请使用独立的数据库、`DATA_DIR`、端口和 Docker 卷，验证完成后再切换业务流量，并在回滚窗口关闭前保留原 1.x 部署。1.4.x 维护线文档见[官方文档](https://www.gpt-load.com/docs?lang=zh)。
+请为 2.0 配备独立的数据库、`DATA_DIR`、端口与 Docker 卷。验证完成后再切流量，并保留原 1.x 部署直到回滚窗口结束。1.4.x 维护线的文档见[官方文档](https://www.gpt-load.com/docs)。
 
 ## 开源依赖
 
-GPT-Load 的部分能力构建在这些开源项目之上，在此致谢：
+GPT-Load 的部分能力建立在这些项目之上，谨此致谢：[Bifrost Core](https://github.com/maximhq/bifrost)（Apache-2.0）提供上游认证、请求/响应转换、流式与用量归一化；[Lobe Icons](https://github.com/lobehub/lobe-icons)（MIT）提供渠道品牌图标。凭据存储、账号选择、调度、重试、健康、亲和、日志与用量策略由 GPT-Load 自有。
 
-| 项目                                                        | 作用                                           | 许可证     |
-| ----------------------------------------------------------- | ---------------------------------------------- | ---------- |
-| [Bifrost Core](https://github.com/maximhq/bifrost)          | 各服务商的认证、请求响应转换、流式与用量归一化 | Apache-2.0 |
-| [Lobe Icons](https://github.com/lobehub/lobe-icons)         | 管理界面中的渠道品牌图标                       | MIT        |
+依赖版本由 [`go.mod`](go.mod) / [`go.sum`](go.sum) 与 [`web/pnpm-lock.yaml`](web/pnpm-lock.yaml) 拥有；完整许可文本在 [`LICENSES/`](LICENSES/)，每个发布附带覆盖 Go 依赖图的 CycloneDX SBOM。
 
-GPT-Load 自身负责凭据存储、账号选择、调度、重试、健康、亲和、日志与用量策略。第三方声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，许可证全文位于 [`LICENSES/`](LICENSES/)，每个 Release 另附覆盖 Go 依赖的 CycloneDX SBOM。
-
-各渠道图标用于标识对应的上游服务商，其商标权归各自所有者；本项目与这些服务商没有从属或背书关系。
+渠道图标标识其对应上游供应商。所有商标归其所有者；本项目不隶属也不代表它们。
 
 ## 项目支持
 
@@ -296,4 +191,4 @@ GPT-Load 自身负责凭据存储、账号选择、调度、重试、健康、�
 
 ---
 
-[MIT License](LICENSE) · [第三方声明](THIRD_PARTY_NOTICES.md) · [安全政策](SECURITY.md)
+[MIT License](LICENSE) · [安全政策](SECURITY.md) · [参与贡献](CONTRIBUTING.md)

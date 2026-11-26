@@ -2,8 +2,13 @@
 description: Astryx detail-layer primitive decision — right-side Dialog panel versus BottomSheet or a swizzled sidebar
 kind: adr
 topic: astryx-migration
-status: accepted
+id: ADR-0002
+status: active
+supersedes: null
+created_at: 2026-09-25
 date: 2026-09-25
+affects_symbols:
+  - web/src/frontends/astryx/components/DetailPanel.tsx#DetailPanel
 ---
 
 # ADR-0002: Build the detail layer on the Astryx `Dialog` as a right-side panel; introduce neither `BottomSheet` nor a swizzled sidebar

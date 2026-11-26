@@ -3,19 +3,12 @@
 This repository keeps current documentation in three owner families:
 
 - `.docs/db/` contains product semantics only and is validated by the semantic document compiler.
-- `.docs/tech/` owns implementation, architecture, operations, and calculation facts.
+- `.docs/tech/` owns implementation, architecture, operations, and calculation facts, including invariant (`INV-*`) and quirk (`QUIRK-*`) entries.
 - `.docs/adr/` is reserved for hard-to-reverse decisions with explicit trade-offs.
 
 Keep source material immutable. A document has one owner; link to another owner instead of copying its facts. Generated semantic database output under `.docs/db/dist/` is ignored and must be rebuilt with the checked-in compiler.
 
-`.docs/README.md` is the project brief. `.docs/PROJECT_HISTORY.md` is a selective
-record of shipped architectural changes, not a complete delivery history.
-Record significant product changes and their reasons in `.docs/product-changelog/`,
-linking evidence, current owners and delivery records rather than duplicating
-them. Preserve new original user communications under `.docs/communications/`;
-distinguish original statements and context from interpretations and unconfirmed
-opinions. Existing `.docs/tech/briefs/` are immutable historical evidence, not
-current technical owners. Do not move or rewrite raw sources.
+`.docs/README.md` is the project brief. Preserve new original user communications under `.docs/communications/`; distinguish original statements and context from interpretations and unconfirmed opinions. Do not move or rewrite raw sources. Process documents never enter this tree — they belong in `.tmp/` and must stay untracked.
 
 Run documentation validation from the repository root with:
 

@@ -2,8 +2,14 @@
 description: Measured AccessKey collection read-path scale and the decision to keep in-memory filtering instead of pushing it into SQL
 kind: adr
 topic: collection-read-model
-status: accepted
+id: ADR-0001
+status: active
+supersedes: null
+created_at: 2026-09-25
 date: 2026-09-25
+affects_symbols:
+  - internal/control/access_key_collection.go#captureAccessKeyCollectionRecords
+  - internal/control/service.go#withReadSnapshot
 ---
 
 # ADR-0001: Keep the collection read model as full-snapshot capture plus in-memory filtering; do not push filtering into SQL yet
@@ -67,5 +73,4 @@ read-snapshot semantics.
 ## References
 
 - Review report: `docs/analysis/architecture-review-briefing.md` (candidate #4)
-- Implementation plan: `docs/design/architecture-deepening-plan.md` (P3 section)
 - Read-path code: `internal/control/access_key_collection.go`, `withReadSnapshot` in `internal/control/service.go`
